@@ -1,0 +1,24 @@
+// Quasar SCSS variable overrides
+
+// Quasar's default $body-font-size is 14px, which it compiles into the
+// `body { font-size: ... }` rule and beats our html font-size bump. Force
+// it to inherit from html so the accessibility +/- and html { font-size }
+// in app.scss actually drive the whole UI.
+$body-font-size: 1rem;
+$min-line-height: 1.4;
+$button-font-size: 1rem;
+
+$primary: #6366f1;
+$secondary: #a855f7;
+$accent: #22d3ee;
+$dark: #0f172a;
+$dark-page: #020617;
+// Was #10b981 (emerald-500) — failed WCAG AA against white text (~2.5:1).
+// Darkened to emerald-700 so badges/buttons with white text are legible (~6.3:1).
+// The vibrant emerald is still used for soft accents/borders via --att-primary-soft.
+$positive: #047857;
+$negative: #ef4444;
+$info: #3b82f6;
+// Was #f59e0b (amber-500) — terrible white-text contrast (~2:1).
+// Darkened to amber-700 (~5.4:1).
+$warning: #b45309;

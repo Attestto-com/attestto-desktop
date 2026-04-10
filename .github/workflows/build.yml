@@ -1,0 +1,102 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      verify_ref:
+        description: 'attestto-verify ref (branch/tag/sha)'
+        required: false
+        default: 'main'
+      mesh_ref:
+        description: 'attestto-mesh ref (branch/tag/sha)'
+        required: false
+        default: 'main'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout attestto-desktop
+        uses: actions/checkout@v4
+        with:
+          path: attestto-desktop
+
+      - name: Checkout attestto-verify (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: Attestto-com/verify
+          ref: ${{ github.event.inputs.verify_ref || 'main' }}
+          path: attestto-verify
+          token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout attestto-mesh (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: Attestto-com/attestto-mesh
+          ref: ${{ github.event.inputs.mesh_ref || 'main' }}
+          path: attestto-mesh
+          token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: attestto-desktop/.nvmrc
+          cache: pnpm
+          cache-dependency-path: |
+            attestto-desktop/pnpm-lock.yaml
+            attestto-verify/pnpm-lock.yaml
+            attestto-mesh/pnpm-lock.yaml
+
+      - name: Install + build attestto-verify
+        working-directory: attestto-verify
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Install + build attestto-mesh
+        working-directory: attestto-mesh
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Install attestto-desktop
+        working-directory: attestto-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: attestto-desktop
+        run: pnpm type-check
+
+      - name: Build (electron-vite)
+        working-directory: attestto-desktop
+        run: pnpm exec electron-vite build
+
+      - name: Run tests with coverage
+        working-directory: attestto-desktop
+        run: pnpm test:coverage
+
+      - name: Guardrail — usePdfSignatures must wrap canonical verifier
+        working-directory: attestto-desktop
+        run: |
+          if ! grep -q "from '@attestto/verify'" src/renderer/composables/usePdfSignatures.ts; then
+            echo "::error::usePdfSignatures.ts must import verifyPdf from @attestto/verify, not re-implement it."
+            exit 1
+          fi
+
+      - name: Guardrail — no internal/process comments in source
+        working-directory: attestto-desktop
+        run: |
+          BANNED='hackathon|from CLAUDE\.md|from handoff|per memory|DEMO MOCK|hackathon demo|hackathon-defining'
+          HITS=$(grep -rn --include='*.ts' --include='*.vue' -iE "$BANNED" src/ || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::Source code contains internal/process comments that should not be public:"
+            echo "$HITS"
+            exit 1
+          fi

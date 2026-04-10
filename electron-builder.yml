@@ -1,0 +1,62 @@
+appId: com.attestto.app
+productName: Attestto
+copyright: Copyright © 2026 Attestto
+
+directories:
+  buildResources: resources
+  output: release
+
+# Bundled trust store — both BCCR roots (the wedge) and Attestto roots
+# (the long-term CA). See attestto-desktop/docs/ca-trust-framework.md for
+# the architecture. Without these the Firma Digital validator runs in
+# `no-roots-bundled` mode and the app cannot show a green checkmark on
+# CR-signed PDFs or Attestto-issued credentials.
+extraResources:
+  - from: src/main/pki/trust-store
+    to: trust-store
+    filter: ["**/*.cer", "**/*.crt", "**/*.pem", "**/*.der"]
+
+# ── macOS ─────────────────────────────────────────────
+mac:
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip
+      arch: [universal]
+  artifactName: "${productName}-${version}-mac.${ext}"
+  category: public.app-category.education
+  darkModeSupport: true
+  hardenedRuntime: true
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# ── Windows ───────────────────────────────────────────
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  artifactName: "${productName}-${version}-win-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+# ── Linux ─────────────────────────────────────────────
+linux:
+  target:
+    - target: AppImage
+      arch: [x64, arm64]
+    - target: deb
+      arch: [x64]
+  artifactName: "${productName}-${version}-linux-${arch}.${ext}"
+  category: Education

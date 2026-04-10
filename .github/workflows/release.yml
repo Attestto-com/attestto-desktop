@@ -1,0 +1,135 @@
+name: release
+
+# ATT-362 — Desktop release CI
+#
+# Triggered by pushing a tag matching `v*` (e.g. v0.1.0).
+# Builds installers in parallel on macOS, Windows, and Linux runners,
+# then publishes them as a GitHub Release.
+#
+# First-pass: UNSIGNED installers. Code signing (Apple notarization,
+# Windows Authenticode) is a TODO — see comments below. End-users will
+# see Gatekeeper / SmartScreen warnings until certs are wired up.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      verify_ref:
+        description: 'attestto-verify ref'
+        required: false
+        default: 'main'
+      mesh_ref:
+        description: 'attestto-mesh ref'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: write   # needed to create the GitHub Release
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: mac
+          - os: windows-latest
+            label: win
+          - os: ubuntu-latest
+            label: linux
+
+    runs-on: ${{ matrix.os }}
+    name: build ${{ matrix.label }}
+
+    steps:
+      - name: Checkout attestto-desktop
+        uses: actions/checkout@v4
+        with:
+          path: attestto-desktop
+
+      - name: Checkout attestto-verify (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: Attestto-com/verify
+          ref: ${{ github.event.inputs.verify_ref || 'main' }}
+          path: attestto-verify
+          token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout attestto-mesh (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: Attestto-com/attestto-mesh
+          ref: ${{ github.event.inputs.mesh_ref || 'main' }}
+          path: attestto-mesh
+          token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: |
+            attestto-desktop/pnpm-lock.yaml
+            attestto-verify/pnpm-lock.yaml
+            attestto-mesh/pnpm-lock.yaml
+
+      - name: Install + build attestto-verify
+        working-directory: attestto-verify
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Install + build attestto-mesh
+        working-directory: attestto-mesh
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Install attestto-desktop
+        working-directory: attestto-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: attestto-desktop
+        run: pnpm type-check
+
+      - name: Build (electron-vite)
+        working-directory: attestto-desktop
+        run: pnpm exec electron-vite build
+
+      # ── Code signing (TODO) ───────────────────────────────────────────
+      # macOS: needs APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+      #        + CSC_LINK (.p12 base64) + CSC_KEY_PASSWORD secrets.
+      #        electron-builder reads these env vars automatically.
+      # Windows: needs WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD (Authenticode .pfx).
+      # Until those exist, installers ship UNSIGNED with a clear warning
+      # in the Release notes.
+      # ──────────────────────────────────────────────────────────────────
+
+      - name: Package + publish (electron-builder)
+        working-directory: attestto-desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Disable signing on macOS/Windows until certs are wired
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: pnpm exec electron-builder --${{ matrix.label }} --publish always
+
+      - name: Upload installers as workflow artifact (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attestto-${{ matrix.label }}-${{ github.ref_name }}
+          path: |
+            attestto-desktop/release/*.dmg
+            attestto-desktop/release/*.zip
+            attestto-desktop/release/*.exe
+            attestto-desktop/release/*.AppImage
+            attestto-desktop/release/*.deb
+          if-no-files-found: warn
+          retention-days: 30

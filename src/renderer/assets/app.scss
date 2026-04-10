@@ -1,0 +1,1428 @@
+// ── Attestto — Global Shell Styles ──────────────
+
+// ── Theme variables ──
+:root {
+  // Surfaces — institutional dark slate (matches attestto.org)
+  --att-bg-base: #0f1923;
+  --att-bg-surface: #162029;
+  --att-bg-elevated: #1e2a34;
+  --att-border: rgba(255, 255, 255, 0.08);
+  --att-border-accent: rgba(16, 185, 129, 0.2);
+
+  // Text — high contrast
+  // Bumped legibility 2026-04-08: muted/disabled were too dim against
+  // the dark slate background. Each tier moved one step brighter.
+  --att-text-title: #f8fafc;
+  --att-text-subtitle: #f1f5f9;
+  --att-text-body: #e2e8f0;
+  --att-text-muted: #cbd5e1;
+  --att-text-disabled: #94a3b8;
+
+  // Brand — single source for accent color
+  // Change these 3 values to retheme the entire UI
+  --att-primary: #10b981;
+  --att-primary-dark: #0d9488;
+  --att-primary-soft: rgba(16, 185, 129, 0.08);
+  --att-primary-border: rgba(16, 185, 129, 0.2);
+
+  // Typography scale — all sizes relative to base (rem)
+  // base = html font-size (controlled by accessibility +/- in settings)
+  // Recalibrated 2026-04-08 from 16px-base to 19px-base — old values
+  // (0.75/0.8125/0.9375rem) rendered illegibly tiny at 19px html base.
+  --att-text-xs: 0.85rem;   // ~16px at 19px base
+  --att-text-sm: 0.95rem;   // ~18px
+  --att-text-md: 1rem;      // ~19px — default body
+  --att-text-lg: 1.15rem;   // ~22px
+  --att-text-xl: 1.4rem;    // ~27px
+  --att-text-2xl: 1.7rem;   // ~32px — page titles
+}
+
+// Light theme overrides — pale green tint, never pure white
+body.body--light {
+  --att-bg-base: #f1f5f9;
+  --att-bg-surface: #f8fafc;
+  --att-bg-elevated: #e2e8f0;
+  --att-bg-card: rgba(255, 255, 255, 0.85);
+  --att-border: rgba(16, 185, 129, 0.12);
+  --att-border-accent: rgba(16, 185, 129, 0.25);
+
+  --att-text-title: #0f172a;
+  --att-text-subtitle: #1e293b;
+  --att-text-body: #1e293b;
+  --att-text-muted: #475569;
+  --att-text-disabled: #64748b;
+
+  --att-primary-soft: rgba(16, 185, 129, 0.08);
+  --att-primary-border: rgba(16, 185, 129, 0.2);
+}
+
+// ── Text size classes (use these everywhere) ──
+.att-text-xs   { font-size: var(--att-text-xs); }
+.att-text-sm   { font-size: var(--att-text-sm); }
+.att-text-md   { font-size: var(--att-text-md); }
+.att-text-lg   { font-size: var(--att-text-lg); }
+.att-text-xl   { font-size: var(--att-text-xl); }
+.att-text-2xl  { font-size: var(--att-text-2xl); }
+
+// ── Text color classes ──
+.att-text-title    { color: var(--att-text-title); }
+.att-text-subtitle { color: var(--att-text-subtitle); }
+.att-text-body     { color: var(--att-text-body); }
+.att-text-muted    { color: var(--att-text-muted); }
+.att-text-disabled { color: var(--att-text-disabled); }
+
+.att-text-mono {
+  font-family: 'Roboto Mono', monospace;
+  font-size: var(--att-text-xs);
+}
+
+// ── Base ──
+// Bumped from browser default 16px → 19px (~19%) for global legibility.
+// The accessibility +/- in Mi cuenta still overrides this at runtime.
+// User feedback 2026-04-08: 17px still felt small next to Gmail/Mail.
+html {
+  font-size: 19px;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+// Force Quasar's compiled body rule to inherit our html font-size base.
+// Quasar's $body-font-size default is 14px and beats html { font-size }.
+// We override the SCSS variable in quasar-variables.scss AND apply this
+// explicit override so we win regardless of Sass compile order.
+body {
+  font-size: 1rem;
+}
+
+// Quasar's q-item__label uses 0.875rem; that compounds against our base
+// to look small. Anchor it to a larger relative size.
+.q-item__label {
+  font-size: 1rem;
+  &--caption {
+    font-size: 0.85rem;
+  }
+}
+
+.q-btn {
+  font-size: 0.95rem;
+}
+
+html {
+  font-size: 15px; // base — controlled by settings +/-
+}
+
+body {
+  background: var(--att-bg-base);
+  font-family: 'Roboto', sans-serif;
+  font-size: var(--att-text-md);
+  line-height: 1.5;
+  color: var(--att-text-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+}
+
+// ── Electron drag regions ──
+.electron-drag {
+  -webkit-app-region: drag;
+}
+
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+// ── Titlebar drag (macOS traffic lights) ──
+.titlebar-drag {
+  height: 28px;
+  -webkit-app-region: drag;
+  background: #162029;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+}
+
+// ── App header — always dark regardless of theme ──
+.app-header {
+  background: #162029 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 28px; // Below traffic lights
+  -webkit-app-region: drag;
+  color: #f1f5f9 !important;
+
+  * {
+    -webkit-app-region: no-drag;
+    color: inherit;
+  }
+
+  .q-btn {
+    color: #e2e8f0 !important;
+  }
+
+  .q-icon {
+    color: #e2e8f0 !important;
+  }
+
+  // Force dark colors on sector tabs inside header
+  .sector-tab {
+    color: #cbd5e1 !important;
+
+    &:hover {
+      color: #f1f5f9 !important;
+      background: rgba(16, 185, 129, 0.08) !important;
+    }
+
+    &--active {
+      color: #f1f5f9 !important;
+
+      .q-icon {
+        color: var(--att-primary) !important;
+      }
+    }
+  }
+
+  .header-indicator {
+    color: #cbd5e1 !important;
+  }
+
+  .identity-dropdown-label {
+    color: #e2e8f0 !important;
+  }
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.brand-mark {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--att-text-title);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+// ── Identity card (header) ──
+.identity-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 6px 6px;
+  border-radius: 10px;
+  background: var(--att-primary-soft);
+  border: 1px solid var(--att-primary-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: var(--att-primary);
+    background: rgba(99, 102, 241, 0.12);
+  }
+
+  &--empty {
+    opacity: 0.7;
+  }
+
+  &__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--att-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    &--empty {
+      background: var(--att-bg-elevated);
+      border: 1px dashed var(--att-text-disabled);
+    }
+
+    &--sm {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+    }
+  }
+
+  &__mark {
+    font-size: 12px;
+    font-weight: 800;
+    color: white;
+    letter-spacing: 1px;
+
+    .identity-card__avatar--sm & {
+      font-size: 9px;
+    }
+  }
+
+  &__info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  &__did {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--att-text-title);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--att-text-muted);
+  }
+}
+
+// ── Identity dropdown ──
+.identity-dropdown-btn {
+  margin-left: 4px;
+  border-radius: 10px !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+  border: 1px solid rgba(16, 185, 129, 0.2) !important;
+
+  &:hover {
+    border-color: var(--att-primary) !important;
+  }
+
+  &--empty {
+    background: #1e2a34 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #94a3b8 !important;
+  }
+}
+
+.identity-dropdown-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--att-text-md);
+  font-weight: 600;
+
+  &__did {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.identity-dropdown-menu {
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 10px;
+}
+
+.identity-dropdown-card {
+  padding: 12px 16px;
+}
+
+.header-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--att-bg-elevated);
+  font-size: var(--att-text-md);
+  font-weight: 600;
+  color: var(--att-text-body);
+}
+
+// ── Sector tab bar (inline in header) ──
+.sector-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.sector-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--att-text-body);
+  font-size: var(--att-text-md);
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  position: relative;
+
+  &:hover:not(.sector-tab--disabled) {
+    color: var(--att-text-title);
+    background: var(--att-primary-soft);
+  }
+
+  &--active {
+    color: var(--att-text-title) !important;
+    font-weight: 700;
+
+    .q-icon {
+      color: var(--att-primary);
+    }
+  }
+
+  &--disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  &__label {
+    font-size: var(--att-text-md);
+  }
+
+  &__badge {
+    font-size: 9px !important;
+    padding: 1px 4px !important;
+    min-height: 0 !important;
+    line-height: 1.2 !important;
+  }
+}
+
+// ── Breadcrumb trail ──
+.app-breadcrumbs {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  background: rgba(15, 25, 35, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: var(--att-text-sm);
+  color: var(--att-text-muted, #cbd5e1);
+
+  &__sep {
+    opacity: 0.5;
+  }
+
+  &__link {
+    color: var(--att-text-muted, #94a3b8);
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 0.15s ease;
+
+    &:hover {
+      color: var(--q-primary, #22d3a8);
+    }
+  }
+
+  &__current {
+    color: #e2e8f0;
+    font-weight: 600;
+  }
+}
+
+// ── Footer status bar ──
+.app-footer {
+  background: #162029 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+.footer-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  font-size: var(--att-text-sm);
+  color: #cbd5e1;
+}
+
+.footer-left,
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #e2e8f0;
+  text-decoration: none;
+  cursor: pointer;
+
+  &__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #162029;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+
+  &:hover {
+    color: #f1f5f9;
+  }
+}
+
+.footer-separator {
+  color: var(--att-text-disabled);
+}
+
+// ── Home page ──
+.home-page {
+  padding: 1.25rem 2.5rem;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-identity-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--att-primary-soft);
+  border: 1px solid var(--att-primary-border);
+  border-radius: 10px;
+  margin-bottom: 20px;
+
+  &__left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
+.identity-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--att-primary-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+.home-section-title {
+  font-size: var(--att-text-sm);
+  font-weight: 600;
+  color: var(--att-text-subtitle);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.75rem;
+}
+
+
+// ── Pending actions ──
+.home-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--att-bg-surface);
+    border: 1px solid var(--att-border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      border-color: var(--att-primary-border);
+    }
+
+    &--high {
+      border-color: rgba(239, 68, 68, 0.3);
+      background: rgba(239, 68, 68, 0.04);
+    }
+  }
+
+  &__label {
+    flex: 1;
+    font-size: var(--att-text-sm);
+  }
+}
+
+// ── Recent activity feed ──
+.home-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 1.5rem;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: var(--att-text-sm);
+
+    &:hover {
+      background: var(--att-bg-surface);
+    }
+  }
+
+  &__module {
+    font-weight: 600;
+    min-width: 120px;
+  }
+
+  &__action {
+    flex: 1;
+  }
+
+  &__time {
+    font-size: var(--att-text-xs);
+    flex-shrink: 0;
+  }
+}
+
+
+// ── Sector placeholder page ──
+.sector-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 140px);
+}
+
+.sector-page__container {
+  text-align: center;
+  max-width: 520px;
+  padding: 40px 24px;
+}
+
+.sector-hero {
+  margin-bottom: 32px;
+
+  &__icon-ring {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: var(--att-primary-soft);
+    border: 2px solid var(--att-primary-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+  }
+
+  &__title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--att-text-title);
+    margin: 0 0 8px;
+  }
+
+  &__description {
+    font-size: 14px;
+    color: var(--att-text-body);
+    margin: 0 0 16px;
+    line-height: 1.5;
+  }
+}
+
+.sector-modules {
+  margin-bottom: 24px;
+
+  &__header {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--att-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+}
+
+.sector-module-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--att-text-body);
+  text-align: left;
+}
+
+.sector-cta {
+  padding-top: 8px;
+}
+
+// ── Camera feed (shared) ──
+.camera-feed {
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--att-bg-elevated);
+  aspect-ratio: 16 / 9;
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+  }
+}
+
+// ── Animations ──
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+// ── Signing page ──
+.signing-page {
+  padding: 20px 24px;
+}
+
+.signing-page__container {
+  margin: 0;
+}
+
+// Stepper
+.signing-stepper {
+  display: flex;
+  align-items: center;
+  margin-bottom: 28px;
+  padding: 0 8px;
+}
+
+.signing-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+
+  &__dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--att-bg-elevated);
+    border: 2px solid var(--att-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--att-text-muted);
+    flex-shrink: 0;
+  }
+
+  &__label {
+    font-size: 12px;
+    color: var(--att-text-muted);
+    white-space: nowrap;
+  }
+
+  &__line {
+    flex: 1;
+    height: 2px;
+    background: var(--att-bg-elevated);
+    margin: 0 8px;
+  }
+
+  &--active &__dot {
+    background: var(--att-primary);
+    border-color: var(--att-primary);
+    color: white;
+  }
+
+  &--active &__label {
+    color: var(--att-text-title);
+    font-weight: 600;
+  }
+
+  &--done &__dot {
+    background: var(--att-primary);
+    border-color: var(--att-primary);
+    color: white;
+  }
+
+  &--done &__line {
+    background: var(--att-primary);
+  }
+}
+
+.signing-content {
+  animation: fadeIn 0.2s ease;
+
+  &--center {
+    text-align: center;
+    padding: 40px 0;
+  }
+}
+
+.signing-actions {
+  display: flex;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid var(--att-border);
+}
+
+// Document selection
+.document-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  border: 2px dashed var(--att-text-disabled);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--att-primary);
+    background: rgba(99, 102, 241, 0.04);
+  }
+}
+
+.document-selected {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 10px;
+
+  &__icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  &__info {
+    flex: 1;
+  }
+}
+
+// Signing order builder
+.signing-order {
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  &__empty {
+    text-align: center;
+    padding: 40px;
+    border: 1px dashed var(--att-border);
+    border-radius: 10px;
+  }
+}
+
+.signing-group {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  position: relative;
+
+  &__position {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 60px;
+    flex-shrink: 0;
+    padding-top: 12px;
+  }
+
+  &__number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--att-primary-soft);
+    border: 1px solid var(--att-primary-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--att-primary);
+  }
+
+  &__mode {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  &__signers {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__arrow {
+    position: absolute;
+    left: 30px;
+    bottom: -12px;
+  }
+}
+
+.signer-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+
+  &__main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+  }
+
+  &__avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--att-primary-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  &__info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__methods {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+}
+
+// Review cards
+.review-card {
+  padding: 14px 16px;
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+
+  &__label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--att-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+}
+
+.review-signer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+
+  &__pos {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--att-primary-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--att-primary);
+    flex-shrink: 0;
+  }
+}
+
+.review-json {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11px;
+  color: var(--att-text-body);
+  background: var(--att-bg-base);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0;
+  max-height: 300px;
+}
+
+// Signing progress
+.signing-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 300px;
+  margin: 0 auto;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--att-bg-surface);
+    border-radius: 6px;
+  }
+}
+
+// ── Notary demo page ──
+.notary-demo {
+  padding: 20px 24px;
+  min-height: 100%;
+}
+
+.notary-demo__container {
+  margin: 0;
+}
+
+.notary-demo__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+// Stats row
+.notary-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.notary-stat {
+  flex: 1;
+  padding: 14px 16px;
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+  text-align: center;
+
+  &--arrow {
+    flex: 0;
+    padding: 14px 8px;
+    background: transparent;
+    border: none;
+  }
+
+  &--highlight {
+    background: rgba(34, 211, 238, 0.06);
+    border-color: rgba(34, 211, 238, 0.15);
+  }
+
+  &__label {
+    font-size: 11px;
+    color: var(--att-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  &__value {
+    font-size: 28px;
+    font-weight: 800;
+    margin: 4px 0;
+  }
+
+  &__sub {
+    font-size: 11px;
+    color: var(--att-text-disabled);
+  }
+}
+
+// Scale visualization
+.notary-scale {
+  padding: 16px;
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+  margin-bottom: 20px;
+
+  &__row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--att-text-title);
+    position: relative;
+    overflow: hidden;
+
+    &--traditional {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.15);
+    }
+
+    &--structured {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.15);
+    }
+  }
+
+  &__fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: rgba(239, 68, 68, 0.06);
+    z-index: 0;
+  }
+}
+
+// Side by side comparison
+.notary-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.notary-panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+
+    &--old {
+      background: rgba(239, 68, 68, 0.08);
+      color: #fca5a5;
+    }
+
+    &--new {
+      background: rgba(16, 185, 129, 0.08);
+      color: #6ee7b7;
+    }
+  }
+
+  &__content {
+    padding: 12px 14px;
+    font-size: 11px;
+    line-height: 1.6;
+    overflow-y: auto;
+    background: var(--att-bg-base);
+
+    &--template {
+      color: var(--att-text-body);
+      max-height: 400px;
+      white-space: pre-wrap;
+      font-family: 'Georgia', serif;
+    }
+
+    &--json {
+      color: var(--att-text-body);
+      max-height: 400px;
+      font-family: 'Roboto Mono', monospace;
+      font-size: 10px;
+      margin: 0;
+    }
+
+    &--full {
+      max-height: 600px;
+    }
+  }
+}
+
+.template-var {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 10px;
+}
+
+// How it works flow
+.notary-flow {
+  padding: 16px;
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+  margin-bottom: 16px;
+
+  &__steps {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  &__step {
+    flex: 1;
+    text-align: center;
+  }
+
+  &__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--att-primary-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 8px;
+  }
+
+  &__label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--att-text-title);
+    margin-bottom: 4px;
+  }
+
+  &__desc {
+    font-size: 11px;
+    color: var(--att-text-muted);
+    line-height: 1.4;
+  }
+
+  &__arrow {
+    padding-top: 14px;
+    flex-shrink: 0;
+  }
+}
+
+// Render on demand callout
+.notary-render {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--att-bg-surface);
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+}
+
+// Full doc view
+.notary-full-doc {
+  border: 1px solid var(--att-border);
+  border-radius: 8px;
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--att-bg-surface);
+    font-size: 13px;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+// ── Centered page layout (for pages with low content) ──
+.page-centered {
+  display: flex;
+  justify-content: center;
+  padding: 2.5rem;
+}
+
+.page-centered__container {
+  width: 100%;
+  max-width: 640px;
+}
+
+// ── Quasar scroll fix ──
+// Quasar's .q-layout-container > div > div sets max-height: 100%
+// but the parent div has no explicit height, so max-height resolves to nothing.
+// Fix: make .q-page-container position absolute to fill the space between header and footer.
+.q-page-container {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  background: var(--att-bg-base);
+  // padding-top/bottom are set dynamically by Quasar for header/footer
+}
+
+.q-page {
+  min-height: auto !important;
+  padding-bottom: 80px;
+}
+
+// ── Onboarding page ──
+.onboarding-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 24px;
+}
+
+.onboarding-container {
+  max-width: 680px;
+  width: 100%;
+  text-align: center;
+}
+
+.onboarding-brand {
+  margin-bottom: 32px;
+}
+
+.onboarding-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.onboarding-subtitle {
+  font-size: 14px;
+  margin: 0 0 32px;
+  line-height: 1.5;
+}
+
+.onboarding-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 32px;
+  text-align: left;
+}
+
+.onboarding-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  background: var(--att-bg-surface);
+  border: 2px solid var(--att-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  color: inherit;
+
+  &:hover {
+    border-color: var(--att-primary-border);
+    background: var(--att-primary-soft);
+  }
+
+  &--selected {
+    border-color: var(--att-primary) !important;
+    background: var(--att-primary-soft);
+  }
+
+  &__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--att-primary-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  &__content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__check {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+  }
+}
+
+.onboarding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}

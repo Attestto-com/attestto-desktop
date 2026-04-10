@@ -1,0 +1,18 @@
+node_modules/
+dist/
+out/
+release/
+*.tsbuildinfo
+.DS_Store
+*.log
+coverage/
+
+# Test fixtures with real PII (signed PDFs, cédula scans, etc.)
+tests/fixtures/*.pdf
+tests/fixtures/*.jpg
+tests/fixtures/*.png
+
+# .codex.md is a symlink into ../CORTEX, not committed here.
+.codex.md
+CLAUDE.md
+docs/ca-ceremony-module.md
