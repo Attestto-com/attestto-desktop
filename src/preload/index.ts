@@ -19,6 +19,12 @@ import type {
   PairwiseProofWire,
   StationSignCredentialParams,
 } from '../shared/station-api'
+import type {
+  ExamStartParams,
+  ExamAnswerParams,
+  ExamProctorEventParams,
+  ProctorEvent,
+} from '../shared/exam-api'
 
 /**
  * Preload — bridge between renderer and Electron/Node APIs.
@@ -205,6 +211,27 @@ contextBridge.exposeInMainWorld('presenciaAPI', {
       ipcRenderer.invoke('pdf:verify-attestto', params),
     save: (params: { bytes: Uint8Array; defaultFileName: string }): Promise<{ cancelled: boolean; path?: string }> =>
       ipcRenderer.invoke('pdf:save', params),
+  },
+
+  // ── Proctored Exam ─────────────────────────────────
+
+  exam: {
+    enterLockdown: () => ipcRenderer.invoke('exam:enter-lockdown'),
+    exitLockdown: () => ipcRenderer.invoke('exam:exit-lockdown'),
+    start: (params: ExamStartParams) => ipcRenderer.invoke('exam:start', params),
+    getQuestion: (sessionId: string, index: number) =>
+      ipcRenderer.invoke('exam:get-question', { sessionId, index }),
+    answer: (params: ExamAnswerParams) => ipcRenderer.invoke('exam:answer', params),
+    reportEvent: (params: ExamProctorEventParams) =>
+      ipcRenderer.invoke('exam:report-event', params),
+    submit: (sessionId: string) => ipcRenderer.invoke('exam:submit', sessionId),
+    status: (sessionId: string) => ipcRenderer.invoke('exam:status', sessionId),
+
+    onLockdownViolation: (cb: (event: ProctorEvent) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, event: ProctorEvent) => cb(event)
+      ipcRenderer.on('exam:lockdown-violation', handler)
+      return () => ipcRenderer.removeListener('exam:lockdown-violation', handler)
+    },
   },
 
   // ── Firma Digital validator ──────────────────────

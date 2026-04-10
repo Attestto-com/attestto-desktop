@@ -13,6 +13,7 @@ import { registerFirmaIPC, unregisterFirmaIPC } from './pki/firma-ipc'
 import { registerPdfIPC, unregisterPdfIPC } from './pdf/pdf-ipc'
 import { registerStationIPC, unregisterStationIPC } from './station/station-ipc'
 import { stationService } from './station/station-service'
+import { registerExamIPC, unregisterExamIPC } from './exam/exam-ipc'
 
 const isDev = !app.isPackaged
 
@@ -150,6 +151,7 @@ app.whenReady().then(async () => {
     registerCaptureIPC(mainWindow)
     registerFirmaIPC()
     registerPdfIPC(mainWindow)
+    registerExamIPC(mainWindow)
 
     // Station identity — generate the per-install signing keypair on first
     // launch, register IPC. This must run BEFORE any code path that signs a
@@ -213,6 +215,7 @@ app.on('before-quit', async () => {
   unregisterFirmaIPC()
   unregisterPdfIPC()
   unregisterStationIPC()
+  unregisterExamIPC()
   closePadronService()
   closeCaptureServer()
   try {
