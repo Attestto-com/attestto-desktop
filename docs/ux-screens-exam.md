@@ -1,71 +1,69 @@
-# UX Screens — Prueba Teórica de Manejo
+# UX Screens — Módulo de Examen Teórico
 
-PWA-first design. Same screens render in desktop (Electron embeds PWA) and mobile.
+**Module of the Attestto PWA** (`mobile.attestto.com` / embedded in desktop via Electron).
+This is NOT a standalone app — it's the exam module within the existing Attestto platform.
+
 Dark theme (#0f1923 base), purple accent (#594FD3), green for correct (#4ade80), orange for wrong (#f97316).
 Card-based layout, mobile-first, inspired by modern quiz apps but adapted for government exam + proctoring.
 
 ---
 
-## Screen 1: Home Dashboard
+## Module Boundaries
 
-```
-┌──────────────────────────────┐
-│  ● Attestto                  │
-│                              │
-│  ┌────────────────────────┐  │
-│  │  👤 Eduardo Chongkan   │  │
-│  │  Cédula: ••••••0501    │  │
-│  │  ✅ Identidad verificada│  │
-│  └────────────────────────┘  │
-│                              │
-│  ── Tu progreso ──────────── │
-│                              │
-│  ┌──────┐ ┌──────┐ ┌──────┐ │
-│  │ 🔥 7 │ │ 📊68%│ │ 🏆 3 │ │
-│  │Racha │ │Total │ │Tests │ │
-│  └──────┘ └──────┘ └──────┘ │
-│                              │
-│  ── Dominio por tema ─────── │
-│                              │
-│  Ley 9078          ████░░ 72%│
-│  Señalización      ██████ 95%│
-│  Seguridad vial    █████░ 81%│
-│  Mecánica          ███░░░ 55%│
-│  Peatones          ████░░ 68%│
-│  Velocidad/frenado ██░░░░ 40%│
-│                              │
-│  ┌────────────────────────┐  │
-│  │   🚗 INICIAR EXAMEN    │  │
-│  │     Automóvil B1       │  │
-│  └────────────────────────┘  │
-│                              │
-│  ┌────────────────────────┐  │
-│  │   🏍 Moto A            │  │
-│  └────────────────────────┘  │
-│                              │
-│  ┌────────────────────────┐  │
-│  │   🚌 Transporte C      │  │
-│  └────────────────────────┘  │
-│                              │
-│  Último intento: ayer, 72%   │
-│  Próximo disponible: hoy     │
-│                              │
-└──────────────────────────────┘
-```
+### What the main Attestto app provides (NOT this module):
+- **Navigation shell** — bottom tabs, top bar, routing
+- **Identity / vault** — user profile, DID, biometric storage, credentials list
+- **Home page** — modules grid, announcements, quick actions
+- **Credentials view** — list of all VCs in vault (exam VC appears here after passing)
+- **Settings** — camera permissions, language, accessibility preferences
+- **Profile** — identity card, cédula/DIMEX verification status
 
-**Elements:**
-- User identity card (from vault, verified badge)
-- Streak counter (consecutive days practiced)
-- Overall accuracy percentage
-- Tests completed count
-- Per-category mastery bars (color-coded: red <50%, yellow 50-79%, green ≥80%)
-- Vehicle type selection buttons (B1 auto, A moto, C transporte)
-- Cooldown indicator if retry not yet available
-- Medical dictamen VC status (if not present → "Necesita dictamen médico")
+### What this exam module provides:
+- **Mastery widget** — embeddable card for the home page (streak, progress, "Iniciar examen" CTA)
+- **Exam flow** — consent → pre-exam verify → questions → feedback → result
+- **Anomaly overlays** — proctoring alerts during exam
+- **VC issuance** — generates the exam VC, hands it to the vault
+- **Evidence export** — watermarked PDF + encrypted bundle
+
+### Entry points from the main app:
+- Home page → mastery widget → "Iniciar examen" or "Pregunta del día"
+- Modules page → "Prueba Teórica" module card
+- Credentials page → "Obtener prueba teórica" if not yet earned
 
 ---
 
-## Screen 2: Consentimiento Informado
+## Widget: Mastery Card (embedded in home page)
+
+```
+┌────────────────────────────┐
+│  🚗 Prueba Teórica         │
+│                            │
+│  🔥 7 días  │  📊 68%  │ 🏆 3│
+│                            │
+│  Ley 9078      ████░░ 72% │
+│  Señalización  ██████ 95% │
+│  Mecánica      ███░░░ 55% │
+│  ⚠️ 2 temas por mejorar    │
+│                            │
+│  ┌──────────────────────┐  │
+│  │  ▶ INICIAR EXAMEN    │  │
+│  └──────────────────────┘  │
+│  Último: ayer, 72%         │
+│  Próximo: disponible hoy   │
+└────────────────────────────┘
+```
+
+**Elements:**
+- Compact card that the main app's home page renders
+- Streak, overall accuracy, tests completed
+- Top 3 category bars (show weakest or summary)
+- CTA button: "Iniciar examen" (or "Pregunta del día" for micro-quiz mode)
+- Cooldown indicator if retry not available
+- Vehicle type selector (auto/moto/transporte) if user has multiple
+
+---
+
+## Screen 1: Consentimiento Informado
 
 ```
 ┌──────────────────────────────┐
@@ -118,7 +116,7 @@ Card-based layout, mobile-first, inspired by modern quiz apps but adapted for go
 
 ---
 
-## Screen 3: Pre-examen — Verificación
+## Screen 2: Pre-examen — Verificación
 
 ```
 ┌──────────────────────────────┐
@@ -173,7 +171,7 @@ Card-based layout, mobile-first, inspired by modern quiz apps but adapted for go
 
 ---
 
-## Screen 4: Pregunta (durante examen)
+## Screen 3: Pregunta (durante examen)
 
 ```
 ┌──────────────────────────────┐
@@ -241,7 +239,7 @@ Card-based layout, mobile-first, inspired by modern quiz apps but adapted for go
 
 ---
 
-## Screen 5: Feedback (after answering)
+## Screen 4: Feedback (after answering)
 
 ```
 ┌──────────────────────────────┐
@@ -304,7 +302,7 @@ Card-based layout, mobile-first, inspired by modern quiz apps but adapted for go
 
 ---
 
-## Screen 6: Anomaly Alert (overlay)
+## Screen 5: Anomaly Alert (overlay)
 
 ```
 ┌──────────────────────────────┐
@@ -342,7 +340,7 @@ Card-based layout, mobile-first, inspired by modern quiz apps but adapted for go
 
 ---
 
-## Screen 7: Result Summary
+## Screen 6: Result Summary
 
 ```
 ┌──────────────────────────────┐
@@ -416,7 +414,7 @@ Card-based layout, mobile-first, inspired by modern quiz apps but adapted for go
 
 ---
 
-## Screen 8: Credencial Emitida
+## Screen 7: Credencial Emitida
 
 ```
 ┌──────────────────────────────┐
@@ -479,85 +477,42 @@ Card-based layout, mobile-first, inspired by modern quiz apps but adapted for go
 
 ---
 
-## Screen 9: Mastery Dashboard (ATT-399 — micro-quiz mode)
+## Module Flow
 
 ```
-┌──────────────────────────────┐
-│  ● Attestto                  │
-│                              │
-│  ── Práctica diaria ──────── │
-│                              │
-│  ┌────────────────────────┐  │
-│  │  🔥 Racha: 12 días      │  │
-│  │                        │  │
-│  │  Hoy: 0/3 preguntas    │  │
-│  │                        │  │
-│  │  ┌──────────────────┐  │  │
-│  │  │ 💡 Pregunta del   │  │  │
-│  │  │    día            │  │  │
-│  │  └──────────────────┘  │  │
-│  │                        │  │
-│  └────────────────────────┘  │
-│                              │
-│  ── Tu dominio ───────────── │
-│                              │
-│  ┌──────────────┐ ┌────────┐ │
-│  │ Total        │ │Listo   │ │
-│  │  487/500     │ │para    │ │
-│  │  preguntas   │ │examen  │ │
-│  │  respondidas │ │  ✅     │ │
-│  └──────────────┘ └────────┘ │
-│                              │
-│  Ley 9078          ██████ 92%│
-│  Señalización      ██████ 88%│
-│  Seguridad vial    █████░ 85%│
-│  Mecánica          █████░ 82%│
-│  Peatones          ████░░ 78%│
-│  Velocidad/frenado ████░░ 76%│
-│                              │
-│  ── Historial ────────────── │
-│                              │
-│  Hoy         ·               │
-│  Ayer        ✅ 3/3 (100%)    │
-│  Hace 2 días ✅ 3/3 (67%)     │
-│  Hace 3 días ✅ 2/3 (100%)    │
-│  ...                         │
-│                              │
-│  ── Credenciales ─────────── │
-│                              │
-│  📜 Dictamen médico    ✅     │
-│  📜 Prueba teórica     ⏳     │
-│  📜 Licencia           🔒     │
-│                              │
-└──────────────────────────────┘
+Main App Home → Mastery Widget → "Iniciar examen"
+                                       │
+                                       ▼
+                              Screen 1: Consentimiento
+                                       │
+                                       ▼
+                              Screen 2: Pre-examen (camera + checks)
+                                       │
+                                       ▼
+                              Screen 3: Pregunta ←──┐
+                                       │            │
+                                       ▼            │
+                              Screen 4: Feedback ───┘ (auto-advance)
+                                       │
+                                  (on anomaly)
+                                       │
+                              Screen 5: Anomaly Alert (overlay)
+                                       │
+                                  (40 questions done or timer expires)
+                                       │
+                                       ▼
+                              Screen 6: Result Summary
+                                       │
+                                  (if passed)
+                                       │
+                                       ▼
+                              Screen 7: Credencial Emitida
+                                       │
+                                       ▼
+                              Main App → Credentials View (VC in vault)
 ```
 
-**Elements:**
-- Streak counter (gamification without being a game)
-- Daily quota (0/3 questions today)
-- "Pregunta del día" CTA
-- Overall progress (487/500 questions answered)
-- "Listo para examen" indicator (all categories ≥80% → green, else shows which need work)
-- Per-category mastery bars
-- Daily history (streak calendar)
-- Credential pipeline: dictamen → prueba teórica → licencia (shows progress toward the goal)
-
----
-
-## Navigation
-
-```
-Bottom tabs (mobile):
-┌──────┬──────┬──────┬──────┐
-│  🏠  │  📝  │  📊  │  👤  │
-│Inicio│Examen│Progreso│Perfil│
-└──────┴──────┴──────┴──────┘
-```
-
-- **Inicio:** Dashboard (Screen 1 or 9 depending on mode)
-- **Examen:** Start proctored exam (Screen 2→3→4)
-- **Progreso:** Mastery dashboard, history, weak topics
-- **Perfil:** Identity, credentials, settings, evidence export
+The module takes over the full screen during the exam (lockdown mode). On completion, it returns control to the main app and the VC appears in the credentials list.
 
 ---
 
