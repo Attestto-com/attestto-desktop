@@ -32,6 +32,7 @@
   "dependencies": {
     "@attestto/mesh": "link:../attestto-mesh",
     "@attestto/verify": "link:../attestto-verify",
+    "@mediapipe/tasks-vision": "^0.10.34",
     "@quasar/extras": "^1.17.0",
     "@signpdf/signpdf": "3.3.0",
     "@signpdf/utils": "3.3.0",

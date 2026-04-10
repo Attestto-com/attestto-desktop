@@ -2,13 +2,70 @@
 import { useProctor } from '@/composables/useProctor'
 
 const proctor = useProctor()
-
-// Auto-start camera on mount for preview
-proctor.camera.start()
 </script>
 
 <template>
   <q-page style="padding: 2.5rem;">
+    <!-- Consent Screen (Ley 8968) -->
+    <template v-if="proctor.phase.value === 'consent'">
+      <div class="flex flex-center" style="min-height: 70vh;">
+        <q-card flat bordered class="bg-dark" style="max-width: 640px; width: 100%;">
+          <q-card-section class="q-pa-lg">
+            <div class="row items-center q-mb-md">
+              <q-icon name="gavel" size="28px" color="primary" class="q-mr-sm" />
+              <div class="text-h5 text-weight-bold">Consentimiento Informado</div>
+            </div>
+
+            <div class="text-body2 q-mb-md" style="line-height: 1.6;">
+              De conformidad con la <strong>Ley N.° 8968</strong> de Protección de la Persona frente
+              al Tratamiento de sus Datos Personales, se le informa que durante la
+              aplicación de esta prueba teórica se recopilará la siguiente información:
+            </div>
+
+            <q-list dense class="q-mb-md">
+              <q-item v-for="(item, i) in [
+                'Captura periódica de fotografía facial para verificación de identidad',
+                'Detección de presencia de rostro y múltiples personas',
+                'Registro de eventos de la sesión (respuestas, navegación, tiempo)',
+                'Telemetría del entorno de evaluación (enfoque de ventana, intentos de salida)',
+                'Hash criptográfico de cada evento para integridad del expediente',
+              ]" :key="i">
+                <q-item-section avatar>
+                  <q-icon name="info" size="sm" color="primary" />
+                </q-item-section>
+                <q-item-section class="text-body2">{{ item }}</q-item-section>
+              </q-item>
+            </q-list>
+
+            <div class="text-body2 q-mb-md" style="line-height: 1.6;">
+              Esta información se utilizará <strong>exclusivamente</strong> para verificar su identidad
+              y garantizar la integridad de la evaluación. No se realizarán análisis secundarios
+              ni se compartirá con terceros fuera del proceso evaluativo.
+            </div>
+
+            <div class="text-body2 q-mb-lg" style="line-height: 1.6;">
+              Los datos serán conservados por el plazo definido por la Dirección General de
+              Educación Vial y eliminados mediante procedimiento verificable conforme a la normativa.
+            </div>
+
+            <q-separator class="q-mb-md" />
+
+            <div class="row items-center justify-between">
+              <q-btn flat label="Rechazar" color="grey-6" @click="$router.push('/')" />
+              <q-btn
+                color="blue-6"
+                text-color="white"
+                unelevated
+                label="Acepto — Continuar"
+                icon="check"
+                @click="proctor.acceptConsent()"
+              />
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </template>
+
     <!-- Ready State -->
     <template v-if="proctor.phase.value === 'ready'">
       <div class="text-h4 text-weight-bold q-mb-sm">Prueba Teórica de Manejo</div>
@@ -109,7 +166,7 @@ proctor.camera.start()
               <div class="camera-feed" style="aspect-ratio: 4/3;">
                 <video
                   v-if="proctor.camera.isActive.value"
-                  :ref="(el) => proctor.camera.bindVideo(el as HTMLVideoElement)"
+                  :ref="(el) => proctor.bindVideoForDetection(el as HTMLVideoElement)"
                   autoplay
                   muted
                   playsinline
@@ -214,7 +271,7 @@ proctor.camera.start()
               <div class="camera-feed" style="aspect-ratio: 4/3;">
                 <video
                   v-if="proctor.camera.isActive.value"
-                  :ref="(el) => proctor.camera.bindVideo(el as HTMLVideoElement)"
+                  :ref="(el) => proctor.bindVideoForDetection(el as HTMLVideoElement)"
                   autoplay
                   muted
                   playsinline
@@ -240,18 +297,46 @@ proctor.camera.start()
             <q-card-section>
               <div class="text-caption text-weight-bold q-mb-sm">Supervisión</div>
               <q-list dense>
+                <!-- Face detection -->
+                <q-item dense>
+                  <q-item-section avatar>
+                    <q-icon name="circle" size="8px" :color="
+                      proctor.faceDetection.status.value === 'present' ? 'positive' :
+                      proctor.faceDetection.status.value === 'multiple' ? 'negative' :
+                      proctor.faceDetection.status.value === 'absent' ? 'warning' :
+                      'grey-6'
+                    " />
+                  </q-item-section>
+                  <q-item-section>
+                    <span class="text-caption" :class="{
+                      'text-warning': proctor.faceDetection.status.value === 'absent',
+                      'text-negative': proctor.faceDetection.status.value === 'multiple',
+                    }">
+                      {{
+                        proctor.faceDetection.status.value === 'present' ? 'Rostro detectado' :
+                        proctor.faceDetection.status.value === 'absent' ? 'Sin rostro detectado' :
+                        proctor.faceDetection.status.value === 'multiple' ? `${proctor.faceDetection.faceCount.value} rostros detectados` :
+                        proctor.faceDetection.status.value === 'error' ? 'Error en detección' :
+                        'Inicializando detección…'
+                      }}
+                    </span>
+                  </q-item-section>
+                </q-item>
+                <!-- Camera -->
                 <q-item dense>
                   <q-item-section avatar>
                     <q-icon name="circle" size="8px" :color="proctor.camera.isActive.value ? 'positive' : 'negative'" />
                   </q-item-section>
                   <q-item-section><span class="text-caption">Cámara {{ proctor.camera.isActive.value ? 'activa' : 'inactiva' }}</span></q-item-section>
                 </q-item>
+                <!-- Lockdown -->
                 <q-item dense>
                   <q-item-section avatar>
                     <q-icon name="circle" size="8px" :color="proctor.lockdown.state.value.active ? 'positive' : 'grey-6'" />
                   </q-item-section>
                   <q-item-section><span class="text-caption">Pantalla bloqueada</span></q-item-section>
                 </q-item>
+                <!-- Focus -->
                 <q-item dense>
                   <q-item-section avatar>
                     <q-icon name="circle" size="8px" :color="proctor.lockdown.state.value.focusLost ? 'negative' : 'positive'" />
@@ -262,6 +347,7 @@ proctor.camera.start()
                     </span>
                   </q-item-section>
                 </q-item>
+                <!-- Violations -->
                 <q-item v-if="proctor.lockdown.state.value.violationCount > 0" dense>
                   <q-item-section avatar>
                     <q-icon name="circle" size="8px" color="warning" />
@@ -269,6 +355,17 @@ proctor.camera.start()
                   <q-item-section>
                     <span class="text-caption text-warning">
                       {{ proctor.lockdown.state.value.violationCount }} intento(s) bloqueado(s)
+                    </span>
+                  </q-item-section>
+                </q-item>
+                <!-- Frame hash -->
+                <q-item v-if="proctor.faceDetection.lastFrameHash.value" dense>
+                  <q-item-section avatar>
+                    <q-icon name="circle" size="8px" color="primary" />
+                  </q-item-section>
+                  <q-item-section>
+                    <span class="text-caption att-text-mono">
+                      Frame: {{ proctor.faceDetection.lastFrameHash.value.slice(0, 12) }}…
                     </span>
                   </q-item-section>
                 </q-item>
