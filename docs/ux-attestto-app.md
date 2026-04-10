@@ -517,6 +517,69 @@ When someone requests a credential (e.g., traffic officer scans QR):
 
 ---
 
+## Credential-Gated Modules
+
+Modules are access-controlled by the user's own VCs — no admin panel, no manual provisioning. The VC IS the access control.
+
+### Module Manifest
+
+```json
+{
+  "id": "cr-traffic-officer",
+  "name": "Oficial de Tránsito",
+  "country": "CR",
+  "requiredCredentials": ["cr-policia-transito-badge"],
+  "capabilities": ["scan-license", "issue-citation", "check-impedimentos"]
+}
+```
+
+No credential → can't install. The app checks the vault for matching VCs.
+
+### Role Examples
+
+| Role | Required Credential | Module Unlocked |
+|---|---|---|
+| Citizen | Cédula / DIMEX | Country module (identity, exam) |
+| Doctor | Colegio de Médicos VC | Issuer: dictamen médico |
+| Notary | Colegio de Notarios VC | Issuer: notarized attestations |
+| Traffic officer | Policía de Tránsito badge VC | Scan license, issue citations |
+| COSEVI clerk | Funcionario COSEVI VC | Verify exam VCs, issue license VCs |
+| Examiner | DGEV examiner VC | Review flagged exam sessions |
+
+### Explore Screen Filtering
+
+```
+── Disponibles para ti ─────────
+
+🚗 Examen Teórico          (tienes cédula ✅)
+🏥 Emisor: Dictamen Médico (tienes Colegio Médicos ✅)
+
+── Requiere credencial ─────────
+
+👮 Oficial de Tránsito     (requiere: badge policial)
+⚖️ Notario                 (requiere: Colegio Notarios)
+🏦 COSEVI Clerk            (requiere: funcionario COSEVI)
+```
+
+### Credential Revocation → Module Access
+
+**OPEN QUESTION:** When a credential that gates a module is revoked, what happens?
+
+Scenarios:
+- Doctor loses Colegio membership → Colegio revokes their VC → doctor module should be disabled
+- Officer is suspended → badge VC revoked → officer module disabled
+- Citizen's cédula expires → country module remains (identity persists, credential needs renewal)
+
+Options to evaluate:
+1. **Immediate lockout:** module checks credential validity on every launch. Revoked = disabled instantly. Risk: what if revocation was an error? Doctor mid-consultation loses access.
+2. **Grace period:** module warns "Credencial revocada — tienes 72h para resolver" then disables. Gives time to dispute/renew.
+3. **Read-only mode:** revoked credential = can view history but can't issue new VCs or take new actions. Preserves access to evidence and audit trail.
+4. **Hybrid:** capabilities that affect others (issue VCs, sign documents) disabled immediately. Self-service capabilities (view own history, export evidence) remain.
+
+**Recommendation: Option 4 (hybrid).** Issuing power revoked instantly (a suspended doctor must NOT issue dictámenes). Self-service access preserved (they can still see their own history and export evidence for disputes). This aligns with the accountability principle — revocation is serious but shouldn't destroy access to personal data.
+
+---
+
 ## Bottom Navigation
 
 ```
