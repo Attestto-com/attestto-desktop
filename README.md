@@ -1,21 +1,42 @@
-**[English](./README.md)** | [Espanol](./docs/translations/README.es.md)
+# attestto-desktop
+
+> Open-source Electron app that turns every computer into a node in a national identity mesh. Citizens, lawyers, notaries, and government officials verify identity, manage verifiable credentials, sign documents, and contribute storage to the distributed infrastructure.
+
+Attestto Desktop is an open-source Electron application enabling citizens, lawyers, notaries, and government officials to verify identity, manage verifiable credentials, sign documents, and participate in a distributed storage network. Every installation contributes configurable storage (default 250 MB) to a peer-to-peer mesh, hosting encrypted identity data it cannot read — the Blind Courier principle. In return, the user's identity state is replicated across 50+ peers, ensuring availability even when government servers are offline.
 
 ---
 
-# Attestto Desktop
+## Architecture
 
-[![build](https://github.com/Attestto-com/attestto-desktop/actions/workflows/build.yml/badge.svg)](https://github.com/Attestto-com/attestto-desktop/actions/workflows/build.yml)
-[![tests](https://img.shields.io/badge/tests-27%20passing-brightgreen)](https://github.com/Attestto-com/attestto-desktop/actions/workflows/build.yml)
-[![coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)](https://github.com/Attestto-com/attestto-desktop/actions/workflows/build.yml)
-[![license](https://img.shields.io/badge/license-Apache%202.0-blue)](./LICENSE)
+```mermaid
+graph TB
+    subgraph Main["Electron Main Process"]
+        MeshNode["MeshNode<br/>(libp2p)"]
+        MeshStore["MeshStore<br/>(SQLite)"]
+        VaultSvc["Vault<br/>(xsalsa20)"]
+    end
 
-**Open Digital Public Infrastructure — Sovereign Identity Station**
+    subgraph Renderer["Electron Renderer Process"]
+        UI["Vue 3 + Quasar + Pinia"]
+        ID["Identity Verification (TF.js liveness)"]
+        Modules["Module Registry → Dynamic Tabs"]
+        VaultStore["Vault Store → Encrypted persistence"]
+        KYC["KYC Provider connectors"]
+    end
 
-Attestto Desktop is an open-source Electron application that turns every computer into a node in a national identity mesh. Citizens, lawyers, notaries, and government officials use it to verify identity, manage verifiable credentials, sign documents, and participate in the distributed storage network that keeps identity infrastructure resilient.
+    Main -- "IPC Bridge" --> Renderer
+    Main --> VaultFile["Vault<br/>(encrypted file)"]
+    Main --> Solana["Solana<br/>(anchor)"]
+```
 
-Every installation contributes a configurable amount of storage (default 250 MB) to the peer-to-peer mesh, hosting encrypted identity data it cannot read — the **Blind Courier** principle. In return, the user's own identity state is replicated across 50+ peers, ensuring availability even when government servers are offline.
-
-The desktop app is the **"Station"** — where the heavy lifting of democracy happens: signing deeds, verifying multi-page medical records, and auditing the mesh. The mobile PWA (planned) is the **"Wallet"** for everyday credential presentation.
+| Layer | Technology | Purpose |
+|:------|:-----------|:--------|
+| **Main Process** | Node.js + @attestto/mesh | P2P networking, storage, vault encryption |
+| **Renderer** | Vue 3, Quasar, Pinia | Adaptive UI, identity verification, module system |
+| **Vault** | xsalsa20-poly1305 + safeStorage | Private keys, credentials, biometric proofs |
+| **Mesh Store** | SQLite + .enc files | Encrypted blobs from other citizens (Blind Courier) |
+| **Guardians** | Shamir 2-of-3 + mesh | Social recovery shards distributed via P2P |
+| **Anchor** | Solana | Immutable proof-of-existence timestamps |
 
 ---
 
@@ -64,40 +85,6 @@ The desktop app is the **"Station"** — where the heavy lifting of democracy ha
 
 ---
 
-## Architecture
-
-```mermaid
-graph TB
-    subgraph Main["Electron Main Process"]
-        MeshNode["MeshNode<br/>(libp2p)"]
-        MeshStore["MeshStore<br/>(SQLite)"]
-        VaultSvc["Vault<br/>(xsalsa20)"]
-    end
-
-    subgraph Renderer["Electron Renderer Process"]
-        UI["Vue 3 + Quasar + Pinia"]
-        ID["Identity Verification (TF.js liveness)"]
-        Modules["Module Registry → Dynamic Tabs"]
-        VaultStore["Vault Store → Encrypted persistence"]
-        KYC["KYC Provider connectors"]
-    end
-
-    Main -- "IPC Bridge" --> Renderer
-    Main --> VaultFile["Vault<br/>(encrypted file)"]
-    Main --> Solana["Solana<br/>(anchor)"]
-```
-
-| Layer | Technology | Purpose |
-|:------|:-----------|:--------|
-| **Main Process** | Node.js + @attestto/mesh | P2P networking, storage, vault encryption |
-| **Renderer** | Vue 3, Quasar, Pinia | Adaptive UI, identity verification, module system |
-| **Vault** | xsalsa20-poly1305 + safeStorage | Private keys, credentials, biometric proofs |
-| **Mesh Store** | SQLite + .enc files | Encrypted blobs from other citizens (Blind Courier) |
-| **Guardians** | Shamir 2-of-3 + mesh | Social recovery shards distributed via P2P |
-| **Anchor** | Solana | Immutable proof-of-existence timestamps |
-
----
-
 ## Biometric Vault Data Model
 
 ```mermaid
@@ -121,20 +108,6 @@ graph LR
 
 ---
 
-## Future: Mesh-Based SSL Trust
-
-The same mesh infrastructure can replace centralized Certificate Authority (CA) lookups:
-
-- **Trust Fingerprints** — SHA-256 of valid SSL certs, gossiped via mesh
-- **Gossip Revocation** — certificate tombstones propagate in <500ms (vs. OCSP's minutes/hours)
-- **Zero-Knowledge Privacy** — query cert status without the CA knowing which sites you visit
-- **Solana Anchoring** — immutable proof that a cert was valid at a specific time
-- **Sovereign Trust** — national trust anchors eliminate dependency on foreign CAs
-
-This turns the mesh from an identity network into a **national cybersecurity infrastructure**.
-
----
-
 ## Theming
 
 The entire UI is controlled by CSS custom properties. To retheme for a different country or institution:
@@ -151,7 +124,7 @@ Quasar brand colors in `main.ts` must match. Typography uses a `rem`-based scale
 
 ---
 
-## Getting Started
+## Quick start
 
 ### Prerequisites
 
@@ -159,7 +132,7 @@ Quasar brand colors in `main.ts` must match. Typography uses a `rem`-based scale
 - pnpm
 - [`attestto-mesh`](https://github.com/Attestto-com/attestto-mesh) cloned as a sibling directory
 
-### Install and Run
+### Install
 
 ```bash
 # Clone both repos side by side
@@ -169,18 +142,24 @@ git clone https://github.com/Attestto-com/attestto-mesh.git
 # Install mesh first (native deps)
 cd attestto-mesh && pnpm install && pnpm build && cd ..
 
-# Install and run desktop
+# Install desktop
 cd attestto-desktop
 pnpm install
-pnpm dev
 ```
 
-### Build for Distribution
+### Try it / Run
 
 ```bash
+# Development mode
+pnpm dev
+
+# Build for distribution
 pnpm dist:mac     # macOS (.dmg)
 pnpm dist:win     # Windows (.exe)
 pnpm dist:linux   # Linux (.AppImage)
+
+# Testing
+pnpm test         # Run 27 tests
 ```
 
 ---
@@ -227,15 +206,56 @@ src/
 
 ---
 
-## Related Repositories
+## Key Concepts
 
-| Repository | Description |
-|:-----------|:------------|
-| [`attestto-mesh`](https://github.com/Attestto-com/attestto-mesh) | P2P mesh library — distributed storage engine |
-| [`did-sns-spec`](https://github.com/Attestto-com/did-sns-spec) | DID method specification for Solana Name Service |
-| [`cr-vc-schemas`](https://github.com/Attestto-com/cr-vc-schemas) | Verifiable Credential schemas for Costa Rica |
-| [`attestto-verify`](https://github.com/Attestto-com/verify) | Open-source document verification web components |
-| [`id-wallet-adapter`](https://github.com/Attestto-com/id-wallet-adapter) | Wallet discovery and credential exchange protocol |
+**Station vs. Wallet:** The desktop app is the **"Station"** — where the heavy lifting of democracy happens: signing deeds, verifying multi-page medical records, and auditing the mesh. The mobile PWA (planned) is the **"Wallet"** for everyday credential presentation.
+
+**Blind Courier:** Every installation contributes configurable storage to the P2P identity mesh, hosting encrypted identity data it cannot read. In return, the user's own identity state is replicated across 50+ peers.
+
+**Mesh-Based SSL Trust:** The same mesh infrastructure can replace centralized Certificate Authority (CA) lookups via Trust Fingerprints (SHA-256 of valid SSL certs, gossiped via mesh), Gossip Revocation (tombstones propagate in <500ms), Zero-Knowledge Privacy (query cert status without the CA knowing which sites you visit), and Sovereign Trust (national trust anchors eliminate dependency on foreign CAs).
+
+---
+
+## Ecosystem
+
+| Repo | Role | Relationship |
+|:-----|:-----|:-------------|
+| [`attestto-mesh`](https://github.com/Attestto-com/attestto-mesh) | P2P Data Layer | Core dependency — libp2p/DHT/GossipSub networking and encrypted blob storage |
+| [`did-sns-spec`](https://github.com/Attestto-com/did-sns-spec) | Identity Specification | DID method for Solana Name Service — identity anchoring standard |
+| [`cr-vc-schemas`](https://github.com/Attestto-com/cr-vc-schemas) | Credential Schemas | Verifiable Credential schemas for Costa Rica use cases |
+| [`attestto-verify`](https://github.com/Attestto-com/attestto-verify) | Document Verification | Web components for in-app credential and document verification |
+| [`id-wallet-adapter`](https://github.com/Attestto-com/id-wallet-adapter) | Wallet Integration | Wallet discovery and credential exchange protocol |
+
+---
+
+## Build with an LLM
+
+This repo ships a [`llms.txt`](./llms.txt) context file — a machine-readable summary of the API, data structures, and integration patterns designed to be read by AI coding assistants.
+
+### Recommended setup
+
+Use the [`attestto-dev-mcp`](../attestto-dev-mcp) server to give your LLM active access to the ecosystem:
+
+```bash
+cd ../attestto-dev-mcp
+npm install && npm run build
+```
+
+Then add it to your Claude / Cursor / Windsurf config and ask:
+
+> *"Explore the Attestto ecosystem and help me build with [this component]"*
+
+### Which model?
+
+We recommend **[Claude](https://claude.ai) Pro** (5× usage vs free) or higher. Long context, strong TypeScript/Electron reasoning, and Solana familiarity handle this codebase well. The MCP server works with any LLM that supports tool use.
+
+> **Quick start:** Ask your LLM to read `llms.txt` in this repo, then describe what you want to build. It will find the right archetype, generate boilerplate, and walk you through the first run.
+
+---
+
+## Contributing
+
+We welcome contributions. Please open issues for bugs and feature requests. See the related repositories for domain-specific contribution guidelines (mesh protocol, identity schemas, credential verification).
 
 ---
 

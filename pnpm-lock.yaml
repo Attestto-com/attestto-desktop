@@ -14,6 +14,9 @@ importers:
       '@attestto/mesh':
         specifier: link:../attestto-mesh
         version: link:../attestto-mesh
+      '@attestto/trust':
+        specifier: link:../attestto-trust
+        version: link:../attestto-trust
       '@attestto/verify':
         specifier: link:../attestto-verify
         version: link:../attestto-verify

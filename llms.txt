@@ -1,0 +1,142 @@
+# attestto-desktop
+
+> Open-source Electron app that turns every computer into a node in a national identity mesh. Citizens, lawyers, notaries, and government officials use it to verify identity, sign documents, manage credentials, and contribute storage to the distributed infrastructure.
+
+Part of the [Attestto Open](https://attestto.org) ecosystem.
+
+**27 tests passing. 80% coverage. Apache 2.0.**
+
+## What it is
+
+The **"Station"** — where the heavy lifting happens: biometric liveness verification, multi-page notarial document signing, social recovery key management, and mesh node operation. The mobile PWA (`attestto-app`) is the everyday wallet; the desktop app is the full identity workstation.
+
+Every installation contributes 250 MB (configurable) to the P2P identity mesh, hosting encrypted data it cannot read — the Blind Courier principle. In return, the user's own identity state is replicated across 50+ peers.
+
+## Core systems
+
+### Encrypted vault
+- OS keychain (`safeStorage`) + biometric (Touch ID / Windows Hello) — no passwords
+- `xsalsa20-poly1305` encryption with scrypt KDF
+- Algorithm-agile envelope (`cryptoSuite` field) — post-quantum migration path without breaking existing vaults
+- 15-minute auto-lock with biometric re-authentication
+- Holds: identity keys, verifiable credentials, biometric proofs, settings, persona
+
+### Identity verification (plugin architecture)
+- **Biometric liveness** (built-in) — TensorFlow.js face mesh, 100% local, anti-spoofing
+  - Voice-guided challenge: center → left → right → up → blink
+  - Web Speech API narration
+  - Biometric captures double-encrypted in vault; hash-based audit trail
+- **Document verification** — country plugin slot (each country implements its ID types: cédula, DNI, passport)
+- **KYC connectors** — Sumsub, Onfido, Jumio integration slots
+- All verification paths produce a Verifiable Credential stored in the local vault
+
+### Social recovery (Shamir 2-of-3)
+- Vault encrypted with passkey-derived key → split into 3 shards via Shamir Secret Sharing
+- Shards distributed to 3 guardians via the P2P mesh
+- Recovery: 2 shards + biometric → full vault reconstruction on new device
+- Guardians hold opaque encrypted blobs — two colluding guardians cannot reconstruct keys without the device
+
+### P2P mesh node
+- Runs `@attestto/mesh` (libp2p + Kademlia DHT + GossipSub)
+- Auto country detection via system timezone → joins correct national mesh
+- Gossip-based revocation — tombstones propagate in <500ms
+- Offline verification — verify credentials and signed documents without internet
+
+### Module system
+- Universal core + country-specific modules from independent registries
+- Core: `@attestto/proctor` (exam proctoring), `@attestto/sign` (document signing), `@attestto/verify` (verification)
+- Country modules: each country runs its own registry (`registry.attestto.cr/modules.json`)
+- Third-party modules: hospitals, banks, universities publish to their own registries
+- Security sandbox: modules get scoped API surface, no raw key access
+
+## Architecture
+
+```
+Electron Main Process
+  MeshNode (libp2p)     — P2P networking
+  MeshStore (SQLite)    — local encrypted blob storage
+  Vault (xsalsa20)      — key and credential storage
+
+Electron Renderer Process
+  Vue 3 + Quasar + Pinia — UI
+  TensorFlow.js          — biometric liveness (local)
+  Module Registry        — dynamic tab loading
+
+IPC Bridge (preload.ts)
+  Exposes vault, mesh, signing APIs to renderer
+  Blocks dangerous APIs — renderer has no Node access
+```
+
+## Stack
+
+- Electron (main + renderer + preload)
+- Vue 3 + Quasar + TypeScript
+- Pinia (state management)
+- electron-vite (build tooling)
+- `@attestto/mesh` — P2P node
+- TensorFlow.js (`@tensorflow-models/face-landmarks-detection`) — biometric liveness
+- `@noble/curves` + `tweetnacl` — Ed25519 + xsalsa20-poly1305
+- `electron-updater` — auto-updates via GitHub Releases
+
+## Repo layout
+
+```
+src/
+  main/          — Electron main process (mesh node, vault, IPC handlers)
+  renderer/      — Vue 3 app (UI, identity verification, document signing)
+  preload/       — IPC bridge (contextBridge — no raw Node in renderer)
+  shared/        — types shared across processes
+resources/       — icons, installer assets
+docs/            — architecture docs, module authoring guide
+tests/           — 27 tests (Vitest + Electron test utils)
+electron-builder.yml — packaging config (Mac, Windows, Linux)
+electron.vite.config.ts
+```
+
+## Development
+
+```bash
+pnpm install
+pnpm dev      # start Electron in development mode
+pnpm test     # run 27 tests
+pnpm build    # package for current platform
+```
+
+## Distribution
+
+Packaged via `electron-builder`. Auto-updates via GitHub Releases (`electron-updater`). Supports Mac (dmg/zip), Windows (nsis), Linux (AppImage/deb).
+
+## Country module authoring
+
+Modules are independent packages published to a country registry. They receive a sandboxed API:
+
+```typescript
+import type { DesktopModule } from '@attestto/module-sdk'
+
+const myCountryModule: DesktopModule = {
+  id: 'cr-notary',
+  name: 'CR Notary Dashboard',
+  requiredCredentials: ['BarAssociationMembership'],
+  tabs: [{ label: 'Sign Deed', component: SignDeedTab }],
+  onInstall: async (api) => {
+    // api.vault — read/write credentials (scoped)
+    // api.mesh  — publish/retrieve encrypted data
+    // api.sign  — request document signing
+    // api.verify — verify a credential
+  },
+}
+```
+
+## Related repos
+
+| Repo | Purpose |
+|---|---|
+| `attestto-mesh` | P2P data layer running inside this app |
+| `attestto-mobile` | Camera companion PWA — phone captures documents for desktop |
+| `attestto-app` | Mobile-first PWA wallet (everyday use) |
+| `attestto-verify` | `@attestto/verify` web component used for in-app verification |
+| `attestto-trust` | PKI trust roots used for document signature validation |
+
+## License
+
+Apache 2.0 — [Attestto Open](https://attestto.org)

@@ -30,6 +30,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import forge from 'node-forge'
+import { ALL_CERTS as CR_TRUST_CERTS } from '@attestto/trust/cr'
 import type { FirmaValidationResult, TrustAnchorOrigin } from '../../shared/firma-api'
 
 // ── Trust anchor loading ────────────────────────────────────────────
@@ -84,41 +85,57 @@ function parseCertFile(path: string): forge.pki.Certificate | null {
 }
 
 /**
- * Load every trust anchor under the trust-store directory. Each subdirectory
- * is treated as a distinct origin (e.g. `bccr`, `attestto`, future per-country
- * directories). Idempotent.
+ * Load trust anchors from @attestto/trust (primary) and the local filesystem
+ * (overlay for custom origins like 'attestto'). Idempotent.
+ *
+ * BCCR certs come from the centralized @attestto/trust package — they are
+ * bundled at build time and need no filesystem access. The local trust-store
+ * directory adds non-BCCR origins (e.g. future Attestto CA certs).
  */
 export function loadTrustAnchors(): { count: number; dir: string; byOrigin: Record<string, number> } {
   anchors.length = 0
-  const root = resolveTrustStoreDir()
   const byOrigin: Record<string, number> = {}
 
-  if (!existsSync(root)) {
-    console.warn('[firma] trust store directory missing:', root)
-    caStore = forge.pki.createCaStore([])
-    return { count: 0, dir: root, byOrigin }
+  // 1. Load BCCR certs from @attestto/trust package (build-time bundled)
+  for (const entry of CR_TRUST_CERTS) {
+    try {
+      const cert = forge.pki.certificateFromPem(entry.pem)
+      anchors.push({
+        cert,
+        origin: 'bccr',
+        subjectHash: cert.subject.hash,
+      })
+      byOrigin['bccr'] = (byOrigin['bccr'] ?? 0) + 1
+    } catch (err) {
+      console.warn(`[firma] failed to parse @attestto/trust cert ${entry.name}:`, (err as Error).message)
+    }
   }
 
-  const subdirs = readdirSync(root).filter((name) => {
-    try {
-      return statSync(join(root, name)).isDirectory()
-    } catch {
-      return false
-    }
-  })
+  // 2. Load additional certs from local filesystem (non-bccr origins only)
+  const root = resolveTrustStoreDir()
+  if (existsSync(root)) {
+    const subdirs = readdirSync(root).filter((name) => {
+      if (name === 'bccr') return false // already loaded from package
+      try {
+        return statSync(join(root, name)).isDirectory()
+      } catch {
+        return false
+      }
+    })
 
-  for (const origin of subdirs) {
-    const subdir = join(root, origin)
-    const files = readdirSync(subdir).filter((f) => /\.(cer|crt|pem|der)$/i.test(f))
-    for (const f of files) {
-      const cert = parseCertFile(join(subdir, f))
-      if (cert) {
-        anchors.push({
-          cert,
-          origin,
-          subjectHash: cert.subject.hash,
-        })
-        byOrigin[origin] = (byOrigin[origin] ?? 0) + 1
+    for (const origin of subdirs) {
+      const subdir = join(root, origin)
+      const files = readdirSync(subdir).filter((f) => /\.(cer|crt|pem|der)$/i.test(f))
+      for (const f of files) {
+        const cert = parseCertFile(join(subdir, f))
+        if (cert) {
+          anchors.push({
+            cert,
+            origin,
+            subjectHash: cert.subject.hash,
+          })
+          byOrigin[origin] = (byOrigin[origin] ?? 0) + 1
+        }
       }
     }
   }
@@ -126,12 +143,12 @@ export function loadTrustAnchors(): { count: number; dir: string; byOrigin: Reco
   caStore = forge.pki.createCaStore(anchors.map((a) => a.cert))
 
   if (anchors.length === 0) {
-    console.warn(`[firma] no trust anchors loaded from ${root} — validator will mark all signatures as no-roots-bundled`)
+    console.warn(`[firma] no trust anchors loaded — validator will mark all signatures as no-roots-bundled`)
   } else {
     const summary = Object.entries(byOrigin)
       .map(([k, v]) => `${k}=${v}`)
       .join(', ')
-    console.log(`[firma] loaded ${anchors.length} trust anchor(s) from ${root} (${summary})`)
+    console.log(`[firma] loaded ${anchors.length} trust anchor(s) (${summary})`)
   }
 
   return { count: anchors.length, dir: root, byOrigin }
