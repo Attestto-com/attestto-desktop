@@ -1128,8 +1128,9 @@ async function storeCredential(cedula: string) {
     ],
     id: credentialId,
     type: ['VerifiableCredential', 'CedulaIdentityCredential'],
-    // Issuer is filled in below once we have a sub-pubkey from the station
-    issuer: 'urn:placeholder',
+    // Issuer is patched below with the sub-key DID after station signing.
+    // Fallback to vault DID if station signing is unavailable.
+    issuer: subjectDid ?? 'urn:attestto:vault:unknown',
     issuanceDate,
     credentialSubject: {
       id: subjectDid ?? 'urn:attestto:vault:locked',
@@ -1168,6 +1169,9 @@ async function storeCredential(cedula: string) {
       // Canonicalize the body BEFORE we know the issuer field, then patch the
       // issuer in afterwards. The patched value is also fed back into the
       // body so storage and signature reference the same shape.
+      // Canonical form uses a deterministic placeholder so verifiers can
+      // reconstruct the exact bytes that were signed (issuer isn't known until
+      // after signing, since it's derived from the pairwise sub-key).
       const tempBody = { ...credentialBody, issuer: 'urn:attestto:station:tbd' }
       const canonical = canonicalizeJson(tempBody)
       const messageB64 = btoa(canonical)
