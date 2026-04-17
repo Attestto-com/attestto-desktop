@@ -2,8 +2,10 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
+import QRCode from 'qrcode'
 import type { VaultCredential } from '../../shared/vault-api'
 import type { CredentialType } from '@attestto/cr-vc-sdk'
+import { usePresentation } from '../composables/usePresentation'
 
 // AnyCredential = VaultCredential (which now includes W3C fields) + flexible credentialSubject
 type AnyCredential = VaultCredential & {
@@ -18,6 +20,31 @@ const loading = ref(true)
 const detailsOpen = ref(false)
 const selected = ref<AnyCredential | null>(null)
 const showRawJson = ref(false)
+
+// Presentation
+const { buildSignedPresentation, presenting, error: presentError } = usePresentation()
+const presentDialogOpen = ref(false)
+const presentQrUrl = ref('')
+const presentVpJson = ref('')
+
+async function presentCredential(c: AnyCredential) {
+  presentDialogOpen.value = true
+  presentQrUrl.value = ''
+  presentVpJson.value = ''
+
+  const vp = await buildSignedPresentation({ credential: c })
+  if (!vp) return
+
+  const json = JSON.stringify(vp, null, 2)
+  presentVpJson.value = json
+
+  const compact = JSON.stringify(vp)
+  if (compact.length <= 2000) {
+    try {
+      presentQrUrl.value = await QRCode.toDataURL(compact, { width: 300, margin: 2 })
+    } catch { /* QR too large, show JSON only */ }
+  }
+}
 
 onMounted(async () => {
   await loadCredentials()
@@ -379,6 +406,15 @@ const sortedCredentials = computed(() =>
             <q-btn
               flat
               dense
+              icon="qr_code_2"
+              label="Presentar"
+              size="sm"
+              color="accent"
+              @click.stop="presentCredential(c)"
+            />
+            <q-btn
+              flat
+              dense
               icon="open_in_new"
               label="Verificar en navegador"
               size="sm"
@@ -417,8 +453,8 @@ const sortedCredentials = computed(() =>
       <div class="info-banner q-mt-lg">
         <q-icon name="lock" size="16px" color="grey-6" />
         <span class="att-text-muted" style="font-size: var(--att-text-xs);">
-          Las credenciales se almacenan cifradas en tu dispositivo. La presentación a verificadores
-          se hace desde la app móvil — el escritorio es para custodia y emisión.
+          Las credenciales se almacenan cifradas en tu dispositivo. Usa el botón «Presentar» para
+          generar un QR con tu presentación verificable firmada.
         </span>
       </div>
     </div>
@@ -527,6 +563,51 @@ const sortedCredentials = computed(() =>
             {{ showRawJson ? 'Ocultar' : 'Ver' }} credencial técnica (avanzado)
           </a>
           <pre v-if="showRawJson" class="raw-json">{{ JSON.stringify(selected, null, 2) }}</pre>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
+    <!-- ── Presentation dialog ─────────────────────────── -->
+    <q-dialog v-model="presentDialogOpen">
+      <q-card style="min-width: 400px; max-width: 500px;">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Presentar credencial</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-card-section class="column items-center q-pa-lg">
+          <!-- Loading -->
+          <div v-if="presenting" class="column items-center q-gutter-md">
+            <q-spinner size="40px" color="primary" />
+            <span class="text-grey">Firmando presentación...</span>
+          </div>
+
+          <!-- Error -->
+          <div v-else-if="presentError" class="text-negative text-center">
+            {{ presentError }}
+          </div>
+
+          <!-- QR + JSON -->
+          <template v-else-if="presentVpJson">
+            <img v-if="presentQrUrl" :src="presentQrUrl" alt="VP QR" style="width: 280px; height: 280px; border-radius: 8px;" />
+            <p v-if="presentQrUrl" class="text-grey text-caption q-mt-sm text-center">
+              El verificador escanea este QR para recibir tu presentación verificable.
+            </p>
+            <p v-else class="text-grey text-caption text-center">
+              La credencial es muy grande para un QR. Copia el JSON.
+            </p>
+
+            <div class="row q-gutter-sm q-mt-md">
+              <q-btn
+                flat
+                icon="content_copy"
+                label="Copiar JSON"
+                color="primary"
+                @click="navigator.clipboard.writeText(presentVpJson); $q.notify({ type: 'positive', message: 'VP copiada', timeout: 1500, position: 'top' })"
+              />
+            </div>
+          </template>
         </q-card-section>
       </q-card>
     </q-dialog>
