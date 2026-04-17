@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage, safeStorage } from 'electron'
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage, safeStorage, powerMonitor } from 'electron'
 import { join } from 'node:path'
 import { registerMeshIPC, unregisterMeshIPC } from './mesh/ipc'
 import { meshService } from './mesh/service'
@@ -140,6 +140,10 @@ app.whenReady().then(async () => {
 
   createWindow()
   createTray()
+
+  // Lock vault on system sleep or screen lock (ATT-280)
+  powerMonitor.on('suspend', () => vaultService.lock())
+  powerMonitor.on('lock-screen', () => vaultService.lock())
 
   if (mainWindow) {
     // Register IPC handlers
