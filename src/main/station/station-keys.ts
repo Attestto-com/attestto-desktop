@@ -31,7 +31,7 @@ import nacl from 'tweetnacl'
  * Recovery:
  *   - NOT backed up. If the station is destroyed, prior credentials remain
  *     verifiable because the station's pubkey is published in its DID document
- *     (did:sns:station-<id>.attestto.sol / did:web:attestto.id:stations:<id>).
+ *     (did:sns:station-<id>.attestto / did:web:attestto.id:stations:<id>).
  *     A reinstall generates a fresh keypair → fresh station DID.
  */
 

@@ -32,7 +32,7 @@ export const TSE_AUTHORITY = {
   /** Web2 DID (primary — resolves today via attestto.id) */
   didWeb: 'did:web:attestto.id:cr:tse',
   /** SNS DID (reserved under our go-cr.sol root, not yet published on-chain) */
-  didSns: 'did:sns:tse.go-cr.sol',
+  didSns: 'did:sns:tse.go-cr',
   website: 'https://www.tse.go.cr',
 }
 
@@ -40,7 +40,7 @@ export const TSE_AUTHORITY = {
 export const PADRON_REGISTRY = {
   name: 'Padrón Electoral Nacional',
   didWeb: 'did:web:attestto.id:cr:tse:padron',
-  didSns: 'did:sns:padron.tse.go-cr.sol',
+  didSns: 'did:sns:padron-tse.go-cr',
 }
 
 /** Cedula format: 9 digits, first digit = province (1-7) or special (8, 9) */

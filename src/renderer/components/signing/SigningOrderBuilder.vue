@@ -225,7 +225,7 @@ function trustColor(trust: string) {
             dark
             outlined
             dense
-            placeholder="did:sns:example.sol"
+            placeholder="did:sns:example"
             hint="Identificador descentralizado del firmante"
           />
           <q-input

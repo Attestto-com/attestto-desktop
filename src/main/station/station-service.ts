@@ -78,7 +78,7 @@ export class StationService {
   /**
    * Returns the three DID forms for this station.
    *
-   *   sns:  did:sns:station-<id>.attestto.sol      (Web3 anchor)
+   *   sns:  did:sns:station-<id>.attestto          (Web3 anchor)
    *   web:  did:web:attestto.id:stations:<id>      (Web2 anchor)
    *   key:  did:key:z<base64url-multicodec-pubkey> (raw)
    *
@@ -92,7 +92,7 @@ export class StationService {
   getStationDid(): StationDids {
     const id = this.getStationId()
     return {
-      sns: `did:sns:station-${id}.attestto.sol`,
+      sns: `did:sns:station-${id}.attestto`,
       web: `did:web:attestto.id:stations:${id}`,
       key: this.publicKeyToDidKey(this.getPublicKey()),
     }

@@ -49,7 +49,7 @@ function startSigning() {
 
 const signingRequestPreview = computed(() => ({
   type: 'AttesttoSigningRequest',
-  issuer: 'did:sns:demo.sol',
+  issuer: 'did:sns:demo',
   document: {
     hash: documentHash.value,
     name: documentName.value,

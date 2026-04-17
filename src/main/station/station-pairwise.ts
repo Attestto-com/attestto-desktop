@@ -14,7 +14,7 @@ import { stationKeys } from './station-keys'
  *     credential.proof.delegationProof  ← signed by station master key
  *         verifies against → station master pubkey (in DID document)
  *     station DID document              ← anchored at:
- *         did:sns:station-<id>.attestto.sol
+ *         did:sns:station-<id>.attestto
  *         did:web:attestto.id:stations:<id>
  *
  * The sub-secret is **discarded immediately** after signing — we never persist

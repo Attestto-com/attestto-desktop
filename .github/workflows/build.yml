@@ -90,6 +90,34 @@ jobs:
             exit 1
           fi
 
+      - name: Guardrail — SNS DID format (no .sol suffix, max 2 levels)
+        working-directory: attestto-desktop
+        run: |
+          # did:sns ABNF (spec §7.1): did:sns:[network:]label[.label]
+          # .sol is the on-chain TLD — resolver appends it, never in the DID itself.
+          # Max 2 levels: did:sns:name OR did:sns:sub.name
+          #
+          # Reject: did:sns:*.sol (redundant TLD)
+          SOL=$(grep -rn --include='*.ts' --include='*.vue' \
+            -P 'did:sns:[a-z0-9][a-z0-9.-]*\.sol' src/ || true)
+          if [ -n "$SOL" ]; then
+            echo "::error::did:sns must NOT include .sol suffix (resolver appends it):"
+            echo "$SOL"
+            echo ""
+            echo "Fix: did:sns:fi-cr NOT did:sns:fi-cr.sol"
+            exit 1
+          fi
+          # Reject: did:sns:a.b.c (3+ levels = 2+ dots)
+          DEEP=$(grep -rn --include='*.ts' --include='*.vue' --include='*.md' \
+            -oP 'did:sns:[a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9-]+' src/ || true)
+          if [ -n "$DEEP" ]; then
+            echo "::error::did:sns max 2 levels (1 dot). Use dashes to flatten:"
+            echo "$DEEP"
+            echo ""
+            echo "Fix: did:sns:padron-tse.go-cr NOT did:sns:padron.tse.go-cr"
+            exit 1
+          fi
+
       - name: Guardrail — no internal/process comments in source
         working-directory: attestto-desktop
         run: |
