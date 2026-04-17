@@ -1,35 +1,49 @@
-import { ipcMain, type BrowserWindow } from 'electron'
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { vaultService } from './vault-service'
 import type { VaultStatus, EncryptedArtifact } from '../../shared/vault-api'
+
+/** Validate that an IPC call originates from our own renderer, not a rogue frame. */
+function assertTrustedSender(event: IpcMainInvokeEvent): void {
+  const url = event.senderFrame?.url ?? ''
+  // Allow our app pages (file:// in production, localhost dev server)
+  if (url.startsWith('file://') || url.startsWith('http://localhost')) return
+  throw new Error(`IPC rejected: untrusted sender origin ${url}`)
+}
 
 /**
  * Register vault IPC handlers.
  */
 export function registerVaultIPC(mainWindow: BrowserWindow): void {
   // Create vault — no passphrase, key protected by OS keychain
-  ipcMain.handle('vault:create', async () => {
+  ipcMain.handle('vault:create', async (event) => {
+    assertTrustedSender(event)
     const contents = await vaultService.create()
     return { did: contents.identity.did }
   })
 
   // Unlock — biometric (Touch ID) + OS keychain
-  ipcMain.handle('vault:unlock', async (): Promise<boolean> => {
+  ipcMain.handle('vault:unlock', async (event): Promise<boolean> => {
+    assertTrustedSender(event)
     return vaultService.unlock()
   })
 
-  ipcMain.handle('vault:lock', async () => {
+  ipcMain.handle('vault:lock', async (event) => {
+    assertTrustedSender(event)
     vaultService.lock()
   })
 
-  ipcMain.handle('vault:exists', async (): Promise<boolean> => {
+  ipcMain.handle('vault:exists', async (event): Promise<boolean> => {
+    assertTrustedSender(event)
     return vaultService.exists()
   })
 
-  ipcMain.handle('vault:read', async () => {
+  ipcMain.handle('vault:read', async (event) => {
+    assertTrustedSender(event)
     return vaultService.read()
   })
 
-  ipcMain.handle('vault:write', async (_event, data: Record<string, unknown>) => {
+  ipcMain.handle('vault:write', async (event, data: Record<string, unknown>) => {
+    assertTrustedSender(event)
     vaultService.write(data)
   })
 
@@ -38,9 +52,10 @@ export function registerVaultIPC(mainWindow: BrowserWindow): void {
   ipcMain.handle(
     'vault:encrypt-artifact',
     async (
-      _event,
+      event,
       params: { plaintext: Uint8Array; mediaType: string; hashHex: string; info: string },
     ): Promise<EncryptedArtifact> => {
+      assertTrustedSender(event)
       // IPC marshalling turns Uint8Array into a plain object on some Electron
       // versions; rebuild it defensively.
       const bytes = params.plaintext instanceof Uint8Array
@@ -53,7 +68,8 @@ export function registerVaultIPC(mainWindow: BrowserWindow): void {
   // Decrypt for auditor inspection (UI to come; ticket #11b territory)
   ipcMain.handle(
     'vault:decrypt-artifact',
-    async (_event, params: { artifact: EncryptedArtifact; info: string }): Promise<Uint8Array> => {
+    async (event, params: { artifact: EncryptedArtifact; info: string }): Promise<Uint8Array> => {
+      assertTrustedSender(event)
       return vaultService.decryptArtifact(params.artifact, params.info)
     },
   )
@@ -62,7 +78,8 @@ export function registerVaultIPC(mainWindow: BrowserWindow): void {
   // Marshalled bytes need defensive rebuild on some Electron versions.
   ipcMain.handle(
     'vault:sign',
-    async (_event, params: { message: Uint8Array }): Promise<Uint8Array> => {
+    async (event, params: { message: Uint8Array }): Promise<Uint8Array> => {
+      assertTrustedSender(event)
       const bytes = params.message instanceof Uint8Array
         ? params.message
         : new Uint8Array(Object.values(params.message as Record<string, number>))
@@ -70,7 +87,8 @@ export function registerVaultIPC(mainWindow: BrowserWindow): void {
     },
   )
 
-  ipcMain.handle('vault:status', async (): Promise<VaultStatus> => {
+  ipcMain.handle('vault:status', async (event): Promise<VaultStatus> => {
+    assertTrustedSender(event)
     const contents = vaultService.read()
     return {
       exists: vaultService.exists(),

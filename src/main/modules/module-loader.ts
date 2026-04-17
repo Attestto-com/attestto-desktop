@@ -2,6 +2,7 @@ import { app, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 
 /**
  * Country Module Loader — manages country-specific modules independently of core updates.
@@ -169,7 +170,18 @@ export function registerModuleIPC(): void {
       const response = await fetch(entry.downloadUrl)
       if (!response.ok) throw new Error(`Failed to download module: ${entry.id}`)
 
-      const data = await response.json()
+      const rawText = await response.text()
+
+      // Verify payload integrity before installing
+      const actualHash = createHash('sha256').update(rawText).digest('hex')
+      if (actualHash !== entry.integrity) {
+        throw new Error(
+          `Module integrity check failed for ${entry.id}: ` +
+          `expected ${entry.integrity}, got ${actualHash}`,
+        )
+      }
+
+      const data = JSON.parse(rawText)
       const manifest: CountryModuleManifest = {
         id: entry.id,
         name: entry.name,

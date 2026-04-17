@@ -51,7 +51,7 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false, // Required for camera access
+      sandbox: true,
     },
   })
 

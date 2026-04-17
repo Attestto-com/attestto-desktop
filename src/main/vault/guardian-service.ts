@@ -85,24 +85,63 @@ export class GuardianService {
   }
 
   /**
+   * Verify that a recovered shard's signature matches the expected signer.
+   * Prevents mesh poisoning where an attacker substitutes a crafted shard.
+   */
+  private verifyShard(
+    publicKeyHex: string,
+    guardianDid: string,
+    path: string,
+    version: number,
+    blob: Uint8Array,
+    signatureHex: string,
+  ): boolean {
+    const blobHash = nacl.hash(blob) // SHA-512
+    const message = Buffer.concat([
+      Buffer.from(`${guardianDid}|${path}|${version}|`, 'utf8'),
+      Buffer.from(blobHash),
+    ])
+    const publicKey = Buffer.from(publicKeyHex, 'hex')
+    const signature = Buffer.from(signatureHex, 'hex')
+    return nacl.sign.detached.verify(
+      new Uint8Array(message),
+      new Uint8Array(signature),
+      new Uint8Array(publicKey),
+    )
+  }
+
+  /**
    * Recover vault from guardian shards.
-   * GETs shards from at least 2 guardians, combines via Shamir,
-   * then restores the vault using the user's passphrase.
+   * GETs shards from at least 2 guardians, verifies their signatures,
+   * combines via Shamir, then restores the vault using the user's passphrase.
    */
   async recover(
     passphrase: string,
     userDid: string,
     guardianDids: string[],
+    userPublicKeyHex?: string,
   ): Promise<boolean> {
     if (guardianDids.length < 2) throw new Error('Need at least 2 guardian DIDs')
 
     const protocol = meshService.getProtocol()
     const shards: Uint8Array[] = []
 
-    // Fetch shards from guardians via mesh
+    // Fetch shards from guardians via mesh, verify signatures before accepting
     for (const guardianDid of guardianDids) {
-      const result = await protocol.get(guardianDid, `recovery/${userDid}/shard`)
+      const path = `recovery/${userDid}/shard`
+      const result = await protocol.get(guardianDid, path)
       if (result) {
+        // Verify shard signature if public key is available
+        if (userPublicKeyHex && result.metadata.signature) {
+          const valid = this.verifyShard(
+            userPublicKeyHex, guardianDid, path,
+            result.metadata.version, result.blob, result.metadata.signature,
+          )
+          if (!valid) {
+            console.warn(`Shard from ${guardianDid} failed signature verification — skipping`)
+            continue
+          }
+        }
         shards.push(result.blob)
       }
       if (shards.length >= 2) break // threshold met

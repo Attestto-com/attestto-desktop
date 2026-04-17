@@ -61,13 +61,15 @@ export class VaultService {
     const key = randomBytes(32)
 
     // Protect key with OS keychain via safeStorage
-    if (safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(key.toString('hex'))
-      writeFileSync(this.keyPath, encrypted)
-    } else {
-      // Fallback: store key directly (less secure, but works everywhere)
-      writeFileSync(this.keyPath, key.toString('hex'))
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error(
+        'OS keychain (safeStorage) is not available. ' +
+        'On Linux, install libsecret (e.g. gnome-keyring). ' +
+        'Vault creation requires OS-level key protection.',
+      )
     }
+    const encrypted = safeStorage.encryptString(key.toString('hex'))
+    writeFileSync(this.keyPath, encrypted)
 
     // Generate identity keypair
     const keyPair = nacl.sign.keyPair()
@@ -135,11 +137,10 @@ export class VaultService {
       const keyData = readFileSync(this.keyPath)
       let keyHex: string
 
-      if (safeStorage.isEncryptionAvailable()) {
-        keyHex = safeStorage.decryptString(keyData)
-      } else {
-        keyHex = keyData.toString('utf-8')
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('OS keychain (safeStorage) is not available — cannot unlock vault securely')
       }
+      keyHex = safeStorage.decryptString(keyData)
 
       const key = new Uint8Array(Buffer.from(keyHex, 'hex'))
 
@@ -307,12 +308,11 @@ export class VaultService {
       if (!plaintext) return false
 
       // Store the key in OS keychain for future unlocks
-      if (safeStorage.isEncryptionAvailable()) {
-        const encrypted = safeStorage.encryptString(Buffer.from(key).toString('hex'))
-        writeFileSync(this.keyPath, encrypted)
-      } else {
-        writeFileSync(this.keyPath, Buffer.from(key).toString('hex'))
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('OS keychain (safeStorage) is not available — cannot store recovered key securely')
       }
+      const encrypted = safeStorage.encryptString(Buffer.from(key).toString('hex'))
+      writeFileSync(this.keyPath, encrypted)
 
       writeFileSync(this.envelopePath, JSON.stringify(envelope, null, 2))
 
