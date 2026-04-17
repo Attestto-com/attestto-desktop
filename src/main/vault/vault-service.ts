@@ -295,7 +295,7 @@ export class VaultService {
       // For recovery, the passphrase is used to derive a key
       const { scryptSync } = require('node:crypto')
       const salt = Buffer.from(envelope.kdfParams?.saltHex ?? '00', 'hex')
-      const key = new Uint8Array(scryptSync(passphrase, salt, 32, { N: 16384, r: 8, p: 1 }))
+      const key = new Uint8Array(scryptSync(passphrase, salt, 32, { N: 65536, r: 8, p: 1 }))
       const nonce = Buffer.from(envelope.nonce, 'hex')
       const ciphertext = Buffer.from(envelope.ciphertext, 'hex')
 
@@ -351,7 +351,7 @@ export class VaultService {
       formatVersion: 1,
       cryptoSuite: CRYPTO_SUITE,
       kdfAlgorithm: 'scrypt',
-      kdfParams: { N: 16384, r: 8, p: 1, saltHex: randomBytes(16).toString('hex') },
+      kdfParams: { N: 65536, r: 8, p: 1, saltHex: randomBytes(16).toString('hex') },
       nonce: Buffer.from(nonce).toString('hex'),
       ciphertext: Buffer.from(ciphertext).toString('hex'),
     }
