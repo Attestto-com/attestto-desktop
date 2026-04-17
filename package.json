@@ -30,8 +30,10 @@
     "postinstall": "electron-rebuild"
   },
   "dependencies": {
+    "@attestto/cr-vc-sdk": "0.2.0",
     "@attestto/mesh": "link:../attestto-mesh",
     "@attestto/trust": "link:../attestto-trust",
+    "@attestto/vc-sdk": "0.2.0",
     "@attestto/verify": "link:../attestto-verify",
     "@mediapipe/tasks-vision": "^0.10.34",
     "@quasar/extras": "^1.17.0",

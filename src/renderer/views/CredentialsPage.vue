@@ -3,47 +3,11 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import type { VaultCredential } from '../../shared/vault-api'
+import type { CredentialType } from '@attestto/cr-vc-sdk'
 
-// ── Types ──────────────────────────────────────────
-// New W3C VC shape — credentials produced by the post-2026-04-08 station-signed
-// flow. Older credentials still carry a flat `data: {…}` blob; both render.
-interface W3cEvidence {
-  type?: string[]
-  authority?: string
-  alsoKnownAs?: string[]
-  authorityName?: string
-  documentFormat?: string
-  ocrSource?: string
-  registry?: string
-  registryAlsoKnownAs?: string[]
-  padronMatch?: boolean
-  nameMatch?: boolean
-  faceMatchScore?: number
-  livenessVerified?: boolean
-  livenessBlinkCount?: number
-}
-
-interface W3cProof {
-  type?: string
-  created?: string
-  verificationMethod?: string
-  proofPurpose?: string
-  proofValue?: string
-  delegationProof?: {
-    stationDid?: string
-    stationDidWeb?: string
-    stationDidKey?: string
-  }
-}
-
-interface AnyCredential extends Partial<VaultCredential> {
-  '@context'?: string[]
+// AnyCredential = VaultCredential (which now includes W3C fields) + flexible credentialSubject
+type AnyCredential = VaultCredential & {
   credentialSubject?: Record<string, unknown> & { id?: string; cedula?: string; nombre?: string; fechaNacimiento?: string }
-  evidence?: W3cEvidence[]
-  proof?: W3cProof
-  trustLevel?: string
-  // Old-shape fallback
-  data?: Record<string, unknown>
 }
 
 const router = useRouter()
@@ -226,12 +190,13 @@ function trustColor(level: string): string {
   return 'grey'
 }
 
-function evidence(c: AnyCredential): W3cEvidence | null {
+function evidence(c: AnyCredential): Record<string, unknown> | null {
   return c.evidence?.[0] ?? null
 }
 
 function authorityName(c: AnyCredential): string {
-  return evidence(c)?.authorityName || 'Tribunal Supremo de Elecciones'
+  const ev = evidence(c) as { authorityName?: string } | null
+  return ev?.authorityName || 'Tribunal Supremo de Elecciones'
 }
 
 function formatDate(iso?: string): string {

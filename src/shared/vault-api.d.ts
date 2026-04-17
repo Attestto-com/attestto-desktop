@@ -38,10 +38,19 @@ export interface VaultSettings {
 
 export interface VaultCredential {
   id: string
-  type: string
-  issuer: string
+  type: string | string[]
+  issuer: string | { id: string; name?: string }
   issuanceDate: string
-  data: Record<string, unknown>
+  /** Flat data blob (legacy shape) */
+  data?: Record<string, unknown>
+  /** W3C VC fields (post-2026-04 shape) */
+  '@context'?: string[]
+  credentialSubject?: Record<string, unknown>
+  evidence?: Array<Record<string, unknown>>
+  proof?: Record<string, unknown>
+  expirationDate?: string
+  credentialStatus?: Record<string, unknown>
+  trustLevel?: string
 }
 
 export interface VaultGuardians {
