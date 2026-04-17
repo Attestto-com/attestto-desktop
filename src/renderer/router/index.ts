@@ -56,6 +56,11 @@ const routes = [
     component: () => import('@/views/CredentialsPage.vue'),
   },
   {
+    path: '/present',
+    name: 'present',
+    component: () => import('@/views/PresentPage.vue'),
+  },
+  {
     path: '/session',
     name: 'session',
     component: () => import('@/views/SessionPage.vue'),

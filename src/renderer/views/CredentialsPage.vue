@@ -450,11 +450,21 @@ const sortedCredentials = computed(() =>
         </div>
       </div>
 
-      <div class="info-banner q-mt-lg">
+      <!-- Scan verifier QR -->
+      <q-btn
+        class="q-mt-lg"
+        unelevated
+        color="accent"
+        icon="qr_code_scanner"
+        label="Escanear QR de verificador"
+        @click="router.push('/present')"
+      />
+
+      <div class="info-banner q-mt-md">
         <q-icon name="lock" size="16px" color="grey-6" />
         <span class="att-text-muted" style="font-size: var(--att-text-xs);">
-          Las credenciales se almacenan cifradas en tu dispositivo. Usa el botón «Presentar» para
-          generar un QR con tu presentación verificable firmada.
+          Las credenciales se almacenan cifradas en tu dispositivo. Usa «Presentar» para compartir
+          vía QR, o «Escanear QR de verificador» para el flujo OID4VP completo.
         </span>
       </div>
     </div>
