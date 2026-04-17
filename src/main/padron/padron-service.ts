@@ -128,8 +128,12 @@ export class PadronService {
       const content = iconv.decode(txtEntry.getData(), 'latin1')
       const lines = content.split('\n').filter(l => l.trim())
 
-      // Clear existing records for this canton before inserting
-      this.db!.exec(`DELETE FROM padron WHERE substr(codelec, 1, 3) = '${cantonCode}'`)
+      // ATT-276: parameterized query to prevent SQL injection
+      // Validate canton code format (3-digit numeric string)
+      if (!/^\d{3}$/.test(cantonCode)) {
+        throw new Error(`Invalid canton code format: ${cantonCode}`)
+      }
+      this.db!.prepare('DELETE FROM padron WHERE substr(codelec, 1, 3) = ?').run(cantonCode)
 
       // Batch insert
       const insert = this.db!.prepare(`
