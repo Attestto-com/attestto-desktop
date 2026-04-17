@@ -57,18 +57,60 @@ async function validate() {
     return
   }
 
-  // TODO: real DGME validation
+  // Simulated DGME validation delay (real DGME API integration is future work)
   await new Promise(resolve => setTimeout(resolve, 2500))
 
-  // TODO: store as VaultCredential
-  console.log('[CR] DIMEX credential stored:', {
-    type: 'DimexIdentityCredential',
-    issuer: 'did:sns:dgme.go.cr',
-    dimex,
-    nombre: `${manualNombre.value} ${manualApellido1.value} ${manualApellido2.value}`.trim(),
-    nacionalidad: manualNacionalidad.value,
+  // Resolve vault DID for issuer fallback
+  let vaultDid = 'did:key:anonymous'
+  try {
+    const contents = await window.presenciaAPI?.vault?.read?.()
+    if (contents?.identity?.did) vaultDid = contents.identity.did
+  } catch { /* fallback */ }
+
+  const nombre = `${manualNombre.value} ${manualApellido1.value} ${manualApellido2.value}`.trim()
+  const credential = {
+    '@context': [
+      'https://www.w3.org/ns/credentials/v2',
+      'https://attestto.id/schemas/v1',
+    ],
+    id: `urn:attestto:cr:dimex:${dimex}`,
+    type: ['VerifiableCredential', 'DimexIdentityCredential'],
+    issuer: vaultDid,
     issuanceDate: new Date().toISOString(),
-  })
+    credentialSubject: {
+      id: vaultDid,
+      dimex,
+      nombre,
+      nacionalidad: manualNacionalidad.value,
+    },
+    evidence: [
+      {
+        type: ['DocumentVerification', 'DGMEDimexCR'],
+        authority: 'did:web:dgme.go.cr',
+        authorityName: 'Dirección General de Migración y Extranjería',
+        documentFormat: 'manual-entry',
+      },
+    ],
+    trustLevel: 'D',
+  }
+
+  // Persist to vault (primary) + localStorage (fallback)
+  const lsKey = `attestto-credential-dimex-${dimex}`
+  try {
+    const api = window.presenciaAPI?.vault
+    if (api?.write && api?.read) {
+      const contents = await api.read()
+      const credentials = [...(contents?.credentials ?? []), credential]
+      await api.write({ credentials })
+      // Remove localStorage copy if vault succeeded
+      localStorage.removeItem(lsKey)
+    } else {
+      localStorage.setItem(lsKey, JSON.stringify(credential))
+    }
+  } catch {
+    // Fallback to localStorage
+    localStorage.setItem(lsKey, JSON.stringify(credential))
+  }
 
   step.value = 'done'
 }
