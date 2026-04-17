@@ -140,26 +140,13 @@ export interface SignAttesttoResult {
 const KEYWORD_PREFIX = 'attestto-sig-v1:'
 
 /**
- * Canonicalize the signed payload. We sort keys lexicographically and use
- * compact JSON so the verifier produces byte-identical input. The `proof`
- * block is excluded from its own input.
- *
- * NOTE: not RFC 8785 JCS — this is a project-internal canonicalization.
- * ATT-344 will swap to JCS once @attestto/verify is updated.
+ * Canonicalize the signed payload using RFC 8785 JCS.
+ * The `proof` block is excluded from its own input.
  */
 function canonicalPayload(sig: Omit<AttesttoPdfSignature, 'proof'>): Uint8Array {
-  const sortedReplacer = (_key: string, value: unknown): unknown => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      const sorted: Record<string, unknown> = {}
-      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
-        sorted[k] = (value as Record<string, unknown>)[k]
-      }
-      return sorted
-    }
-    return value
-  }
-  const json = JSON.stringify(sig, sortedReplacer)
-  return new TextEncoder().encode(json)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { canonicalize } = require('json-canonicalize') as typeof import('json-canonicalize')
+  return new TextEncoder().encode(canonicalize(sig))
 }
 
 function sha256Hex(bytes: Uint8Array): string {

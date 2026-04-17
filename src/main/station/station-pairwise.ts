@@ -110,6 +110,78 @@ export function buildDelegationBinding(
   )
 }
 
+// ---------------------------------------------------------------------------
+// 2-step signing flow (ATT-344) — eliminates canonicalIssuerPlaceholder
+// ---------------------------------------------------------------------------
+
+/** Held sub-secrets keyed by credentialId. Auto-expire after 30s. */
+const pendingSubKeys = new Map<string, { secretKey: Uint8Array; timer: ReturnType<typeof setTimeout> }>()
+
+export interface PreparedCredential {
+  subPublicKey: Uint8Array
+  delegationProof: Uint8Array
+  delegationBinding: Uint8Array
+  createdAt: string
+}
+
+/**
+ * Step 1: Generate a fresh sub-key, sign the delegation, hold the sub-secret.
+ * Returns the sub-public-key so the caller can derive the issuer DID.
+ */
+export function prepareCredential(credentialId: string): PreparedCredential {
+  if (pendingSubKeys.has(credentialId)) {
+    const old = pendingSubKeys.get(credentialId)!
+    old.secretKey.fill(0)
+    clearTimeout(old.timer)
+    pendingSubKeys.delete(credentialId)
+  }
+
+  const sub = nacl.sign.keyPair()
+  const createdAt = new Date().toISOString()
+  const delegationBinding = buildDelegationBinding(credentialId, createdAt, sub.publicKey)
+
+  const masterSeed = stationKeys.getSecretKey()
+  const masterKp = nacl.sign.keyPair.fromSeed(masterSeed)
+  const delegationProof = nacl.sign.detached(delegationBinding, masterKp.secretKey)
+
+  // Hold sub-secret for up to 30s — if finalizeCredential isn't called, wipe it.
+  const timer = setTimeout(() => {
+    const entry = pendingSubKeys.get(credentialId)
+    if (entry) {
+      entry.secretKey.fill(0)
+      pendingSubKeys.delete(credentialId)
+    }
+  }, 30_000)
+
+  pendingSubKeys.set(credentialId, { secretKey: sub.secretKey, timer })
+
+  return { subPublicKey: sub.publicKey, delegationProof, delegationBinding, createdAt }
+}
+
+/**
+ * Step 2: Sign the canonicalized credential body with the held sub-secret.
+ * Wipes the sub-secret immediately after signing — cannot be called twice.
+ */
+export function finalizeCredential(credentialId: string, messageBytes: Uint8Array): Uint8Array {
+  const entry = pendingSubKeys.get(credentialId)
+  if (!entry) {
+    throw new Error(`No pending sub-key for credential ${credentialId} — call prepareCredential first`)
+  }
+
+  const proofValue = nacl.sign.detached(messageBytes, entry.secretKey)
+
+  // Wipe and remove
+  entry.secretKey.fill(0)
+  clearTimeout(entry.timer)
+  pendingSubKeys.delete(credentialId)
+
+  return proofValue
+}
+
+// ---------------------------------------------------------------------------
+// Verification
+// ---------------------------------------------------------------------------
+
 /**
  * Verifier-side helper: given a credential's pairwise proof + the station's
  * known master pubkey, verify both signatures.

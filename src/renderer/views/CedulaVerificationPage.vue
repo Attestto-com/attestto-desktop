@@ -43,7 +43,6 @@ interface VcProofBlock {
     binding: string
     signature: string
   }
-  canonicalIssuerPlaceholder: string
 }
 
 /**
@@ -1071,22 +1070,8 @@ async function linkFirmaDigital() {
 }
 
 
-/**
- * Deterministic JSON serialization with recursively sorted keys.
- * Used as a v1 canonicalization scheme for VC signing — not full JCS (RFC
- * 8785), but sufficient for ed25519 over a self-contained JSON document where
- * we control both signer and verifier. Replace with a real JCS implementation
- * before exposing this VC to third-party verifiers.
- */
-function canonicalizeJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) {
-    return '[' + value.map(canonicalizeJson).join(',') + ']'
-  }
-  const obj = value as Record<string, unknown>
-  const keys = Object.keys(obj).sort()
-  return '{' + keys.map(k => JSON.stringify(k) + ':' + canonicalizeJson(obj[k])).join(',') + '}'
-}
+// RFC 8785 JCS canonicalization — deterministic JSON for signing
+import { canonicalize } from '../../shared/jcs'
 
 async function storeCredential(cedula: string) {
   const nombre = manualNombre.value || extractedData.value?.nombre || ''
@@ -1159,52 +1144,39 @@ async function storeCredential(cedula: string) {
     trustLevel: identityTrust.value,
   }
 
-  // Sign with a fresh pairwise sub-key from the station identity. The
-  // returned proof contains the sub-pubkey + delegation chain back to the
-  // station master key. The station's master key never leaves the main
-  // process — only the signature crosses the IPC boundary.
+  // 2-step signing with pairwise sub-key (ATT-344):
+  // 1. Prepare: get sub-public-key → derive issuer DID → build body with real issuer
+  // 2. Finalize: JCS-canonicalize body → sign with sub-secret → wipe
   let proof: VcProofBlock | null = null
-  if (window.presenciaAPI?.station?.signCredential && stationDids) {
+  if (window.presenciaAPI?.station?.prepareCredential && stationDids) {
     try {
-      // Canonicalize the body BEFORE we know the issuer field, then patch the
-      // issuer in afterwards. The patched value is also fed back into the
-      // body so storage and signature reference the same shape.
-      // Canonical form uses a deterministic placeholder so verifiers can
-      // reconstruct the exact bytes that were signed (issuer isn't known until
-      // after signing, since it's derived from the pairwise sub-key).
-      const tempBody = { ...credentialBody, issuer: 'urn:attestto:station:tbd' }
-      const canonical = canonicalizeJson(tempBody)
+      // Step 1: prepare — get the sub-key so we know the issuer before signing
+      const prepared = await window.presenciaAPI.station.prepareCredential(credentialId)
+      const subPubBytes = Uint8Array.from(atob(prepared.subPublicKeyB64), c => c.charCodeAt(0))
+      const subDidKey = subPubKeyToDidKey(subPubBytes)
+      credentialBody.issuer = subDidKey
+
+      // Step 2: JCS-canonicalize the body with REAL issuer, then finalize
+      const canonical = canonicalize(credentialBody)
       const messageB64 = btoa(canonical)
-      const wireProof = await window.presenciaAPI.station.signCredential({
+      const finalized = await window.presenciaAPI.station.finalizeCredential({
         credentialId,
         messageB64,
       })
 
-      // Build the VC issuer DID from the sub-pubkey. did:key:z<base64url(0xed01||pubkey)>
-      // — matches the convention vault-service.ts uses for the user identity DID.
-      const subPubBytes = Uint8Array.from(atob(wireProof.subPublicKeyB64), c => c.charCodeAt(0))
-      const subDidKey = subPubKeyToDidKey(subPubBytes)
-      credentialBody.issuer = subDidKey
-
       proof = {
         type: 'Ed25519Signature2020',
-        created: wireProof.createdAt,
+        created: prepared.createdAt,
         verificationMethod: `${subDidKey}#key-1`,
         proofPurpose: 'assertionMethod',
-        proofValue: `z${wireProof.proofValueB64}`,
-        // Delegation chain — proves this sub-key is authorized by the station
-        // master, which in turn is anchored at:
+        proofValue: `z${finalized.proofValueB64}`,
         delegationProof: {
           stationDid: stationDids.sns,
           stationDidWeb: stationDids.web,
           stationDidKey: stationDids.key,
-          binding: wireProof.delegationBindingB64,
-          signature: wireProof.delegationProofB64,
+          binding: prepared.delegationBindingB64,
+          signature: prepared.delegationProofB64,
         },
-        // Note: the canonical bytes the sub-key signed are the body with
-        // issuer = 'urn:attestto:station:tbd'. Verifier reconstructs the same
-        // shape, swaps in the placeholder, recomputes canonical, and verifies.
-        canonicalIssuerPlaceholder: 'urn:attestto:station:tbd',
       }
     } catch (err) {
       console.error('[CR] station signing failed:', err)

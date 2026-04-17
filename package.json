@@ -46,6 +46,7 @@
     "better-sqlite3": "^12.8.0",
     "electron-updater": "^6.8.3",
     "iconv-lite": "^0.7.2",
+    "json-canonicalize": "^2.0.0",
     "jsqr": "^1.4.0",
     "node-forge": "^1.4.0",
     "pdf-lib": "^1.17.1",

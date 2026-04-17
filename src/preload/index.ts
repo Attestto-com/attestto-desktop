@@ -18,6 +18,9 @@ import type {
   StationInfo,
   PairwiseProofWire,
   StationSignCredentialParams,
+  StationPrepareResult,
+  StationFinalizeParams,
+  StationFinalizeResult,
 } from '../shared/station-api'
 import type {
   ExamStartParams,
@@ -182,6 +185,10 @@ contextBridge.exposeInMainWorld('presenciaAPI', {
     info: (): Promise<StationInfo> => ipcRenderer.invoke('station:info'),
     signCredential: (params: StationSignCredentialParams): Promise<PairwiseProofWire> =>
       ipcRenderer.invoke('station:sign-credential', params),
+    prepareCredential: (credentialId: string): Promise<StationPrepareResult> =>
+      ipcRenderer.invoke('station:prepare-credential', credentialId),
+    finalizeCredential: (params: StationFinalizeParams): Promise<StationFinalizeResult> =>
+      ipcRenderer.invoke('station:finalize-credential', params),
   },
 
   // ── PDF — Attestto self-attested signing ─────────

@@ -4,6 +4,9 @@ import type {
   StationInfo,
   PairwiseProofWire,
   StationSignCredentialParams,
+  StationPrepareResult,
+  StationFinalizeParams,
+  StationFinalizeResult,
 } from '../../shared/station-api'
 
 /**
@@ -29,10 +32,8 @@ export function registerStationIPC(): void {
     }
   })
 
-  // Sign a credential body with a fresh pairwise sub-key.
-  // The renderer must canonicalize the credential body itself before passing
-  // the bytes here — the main process does NOT make canonicalization decisions
-  // because that's a credential-schema concern.
+  // Sign a credential body with a fresh pairwise sub-key (legacy 1-step flow).
+  // Kept for PDF signing where the issuer is known before signing.
   ipcMain.handle(
     'station:sign-credential',
     async (_e, params: StationSignCredentialParams): Promise<PairwiseProofWire> => {
@@ -47,9 +48,36 @@ export function registerStationIPC(): void {
       }
     },
   )
+
+  // 2-step flow (ATT-344): prepare sub-key → renderer builds body → finalize
+  ipcMain.handle(
+    'station:prepare-credential',
+    async (_e, credentialId: string): Promise<StationPrepareResult> => {
+      const prepared = stationService.prepareCredential(credentialId)
+      return {
+        subPublicKeyB64: Buffer.from(prepared.subPublicKey).toString('base64'),
+        delegationProofB64: Buffer.from(prepared.delegationProof).toString('base64'),
+        delegationBindingB64: Buffer.from(prepared.delegationBinding).toString('base64'),
+        createdAt: prepared.createdAt,
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'station:finalize-credential',
+    async (_e, params: StationFinalizeParams): Promise<StationFinalizeResult> => {
+      const messageBytes = new Uint8Array(Buffer.from(params.messageB64, 'base64'))
+      const proofValue = stationService.finalizeCredential(params.credentialId, messageBytes)
+      return {
+        proofValueB64: Buffer.from(proofValue).toString('base64'),
+      }
+    },
+  )
 }
 
 export function unregisterStationIPC(): void {
   ipcMain.removeHandler('station:info')
   ipcMain.removeHandler('station:sign-credential')
+  ipcMain.removeHandler('station:prepare-credential')
+  ipcMain.removeHandler('station:finalize-credential')
 }

@@ -7,6 +7,7 @@
  */
 
 import { ref } from 'vue'
+import { canonicalize } from '../../shared/jcs'
 import type { VaultCredential } from '../../shared/vault-api'
 
 export interface VerifiablePresentation {
@@ -76,8 +77,8 @@ export function usePresentation() {
         vpHash: await hashObject(vpBody),
       }
 
-      // Serialize and sign via vault IPC
-      const proofBytes = new TextEncoder().encode(JSON.stringify(proofInput))
+      // JCS-canonicalize and sign via vault IPC (RFC 8785)
+      const proofBytes = new TextEncoder().encode(canonicalize(proofInput))
       const signatureBytes: Uint8Array = await api.vault.sign(proofBytes)
 
       // Base64url encode the signature

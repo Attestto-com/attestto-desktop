@@ -1,6 +1,6 @@
 import nacl from 'tweetnacl'
 import { stationKeys } from './station-keys'
-import { signWithPairwiseKey, type PairwiseProof } from './station-pairwise'
+import { signWithPairwiseKey, prepareCredential, finalizeCredential, type PairwiseProof } from './station-pairwise'
 
 /**
  * StationService — public API for the per-install Attestto station identity.
@@ -115,6 +115,16 @@ export class StationService {
    */
   signCredential(credentialId: string, messageBytes: Uint8Array): PairwiseProof {
     return signWithPairwiseKey(credentialId, messageBytes)
+  }
+
+  /** 2-step flow step 1: generate sub-key + delegation, hold sub-secret */
+  prepareCredential(credentialId: string): import('./station-pairwise').PreparedCredential {
+    return prepareCredential(credentialId)
+  }
+
+  /** 2-step flow step 2: sign with held sub-secret, then wipe it */
+  finalizeCredential(credentialId: string, messageBytes: Uint8Array): Uint8Array {
+    return finalizeCredential(credentialId, messageBytes)
   }
 
   /**
