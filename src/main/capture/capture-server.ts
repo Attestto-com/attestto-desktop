@@ -202,8 +202,10 @@ export class CaptureServer {
   private handleHTTP(req: IncomingMessage, res: ServerResponse): void {
     const url = req.url || ''
 
-    // CORS headers for local network
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    // ATT-275: restrict CORS to the capture page origin (same server)
+    const localIP = this.getLocalIP()
+    const allowedOrigin = `https://${localIP}:${this.port}`
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
