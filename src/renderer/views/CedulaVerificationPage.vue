@@ -1064,7 +1064,7 @@ async function linkFirmaDigital() {
   // This replaces the cédula-based credential with a stronger one
   console.log('[CR] Firma Digital linked:', {
     type: 'FirmaDigitalCredential',
-    issuer: 'did:sns:sinpe.fi.cr',
+    issuer: 'did:sns:fi-cr.sol',
     trust: 'A+',
     cert: firmaDigitalCert.value,
   })

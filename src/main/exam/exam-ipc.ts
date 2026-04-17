@@ -103,8 +103,9 @@ export function registerExamIPC(mainWindow: BrowserWindow): void {
   })
 
   ipcMain.handle('exam:start', async (_event, params: ExamStartParams) => {
-    // TODO: get subjectDid from vault service
-    const subjectDid = 'did:sns:exam-subject'
+    // Resolve subject DID from vault — fall back to placeholder if locked
+    const contents = (await import('../vault/vault-service')).vaultService.read()
+    const subjectDid = contents?.identity?.did ?? 'did:key:pending'
     return startExamSession(params, subjectDid)
   })
 
