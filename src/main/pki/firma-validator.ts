@@ -164,6 +164,145 @@ function findOrigin(root: forge.pki.Certificate): TrustAnchorOrigin {
   return match?.origin ?? 'unknown'
 }
 
+// ── Resolver fallback (ATT-441) ─────────────────────────────────────
+
+const RESOLVER_URL = 'https://resolver.attestto.com/1.0/identifiers'
+const RESOLVER_TIMEOUT_MS = 10_000
+
+/** Simple cache for resolved DID Documents (5 min TTL). */
+const resolverCache = new Map<string, { certs: forge.pki.Certificate[]; origin: string; ts: number }>()
+const CACHE_TTL = 5 * 60 * 1000
+
+/**
+ * Extract country code from a cert's subject or issuer fields.
+ * Returns lowercase ISO 3166-1 alpha-2 (e.g. 'cr', 'br', 'ar').
+ */
+function extractCountry(cert: forge.pki.Certificate): string | null {
+  const c =
+    cert.subject.getField('C')?.value ??
+    cert.issuer.getField('C')?.value
+  return c ? String(c).toLowerCase() : null
+}
+
+/**
+ * Derive a simple did:pki path from a CA cert's common name and country.
+ * This is a lightweight version of attestto-verify's pki-did-derivation.ts.
+ */
+function derivePkiDid(cert: forge.pki.Certificate, country: string): string | null {
+  const cn = (cert.subject.getField('CN')?.value ?? '').toUpperCase()
+  if (!cn) return null
+
+  // Country-specific patterns (must match attestto-verify's CA_DID_MAPPINGS)
+  const patterns: Record<string, Array<{ match: string; path: string }>> = {
+    cr: [
+      { match: 'SINPE', path: 'sinpe' },
+      { match: 'POLITICA', path: 'politica' },
+      { match: 'RAIZ NACIONAL', path: 'raiz-nacional' },
+    ],
+    br: [
+      { match: 'SERPRO', path: 'serpro' },
+      { match: 'CERTISIGN', path: 'certisign' },
+      { match: 'RAIZ BRASILEIRA', path: 'raiz-brasileira' },
+      { match: 'ICP-BRASIL', path: 'icp-brasil' },
+    ],
+    ar: [
+      { match: 'FIRMA DIGITAL', path: 'acfd' },
+      { match: 'AC RAIZ', path: 'raiz' },
+    ],
+  }
+
+  const countryPatterns = patterns[country]
+  if (countryPatterns) {
+    for (const p of countryPatterns) {
+      if (cn.includes(p.match)) return `did:pki:${country}:${p.path}`
+    }
+  }
+
+  // Heuristic: normalize CA name into a path segment
+  const normalized = cn
+    .replace(/^(CA|AC|AUTORIDADE CERTIFICADORA|AUTORIDAD CERTIFICANTE)\s+/i, '')
+    .replace(/\s*V\d+\s*$/i, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  return normalized ? `did:pki:${country}:${normalized}` : null
+}
+
+/**
+ * Try to resolve trust anchors via resolver.attestto.com for a non-CR cert chain.
+ * Returns forge.pki.Certificate[] from the resolved DID Document, or empty array on failure.
+ */
+async function resolveRemoteAnchors(
+  chain: forge.pki.Certificate[],
+  diagnostics: string[],
+): Promise<{ certs: forge.pki.Certificate[]; origin: string } | null> {
+  // Walk chain from root downward to find a resolvable CA
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const cert = chain[i]
+    const country = extractCountry(cert)
+    if (!country) continue
+
+    const did = derivePkiDid(cert, country)
+    if (!did) continue
+
+    // Check cache
+    const cached = resolverCache.get(did)
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      diagnostics.push(`resolver cache hit: ${did}`)
+      return { certs: cached.certs, origin: cached.origin }
+    }
+
+    diagnostics.push(`resolver: trying ${did}`)
+
+    try {
+      const response = await fetch(`${RESOLVER_URL}/${encodeURIComponent(did)}`, {
+        signal: AbortSignal.timeout(RESOLVER_TIMEOUT_MS),
+        headers: { Accept: 'application/did+json, application/json' },
+      })
+
+      if (!response.ok) {
+        diagnostics.push(`resolver: ${did} → ${response.status}`)
+        continue
+      }
+
+      const body = await response.json()
+      const didDoc = body.didDocument
+      if (!didDoc?.verificationMethod) continue
+
+      // Extract PEM-encoded certificates from the DID Document
+      const resolved: forge.pki.Certificate[] = []
+      for (const vm of didDoc.verificationMethod) {
+        // The resolver may include x5c (cert chain) in the JWK
+        if (vm.publicKeyJwk?.x5c) {
+          for (const b64Cert of vm.publicKeyJwk.x5c) {
+            try {
+              const pem = `-----BEGIN CERTIFICATE-----\n${b64Cert}\n-----END CERTIFICATE-----`
+              resolved.push(forge.pki.certificateFromPem(pem))
+            } catch { /* skip unparseable */ }
+          }
+        }
+      }
+
+      if (resolved.length === 0) {
+        diagnostics.push(`resolver: ${did} resolved but no x5c certs`)
+        continue
+      }
+
+      const origin = didDoc.pkiMetadata?.countryName?.toLowerCase() ?? country
+      resolverCache.set(did, { certs: resolved, origin, ts: Date.now() })
+      diagnostics.push(`resolver: ${did} → ${resolved.length} cert(s) from ${origin}`)
+      return { certs: resolved, origin }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      diagnostics.push(`resolver: ${did} failed — ${msg}`)
+    }
+  }
+
+  return null
+}
+
 // ── Validation ──────────────────────────────────────────────────────
 
 function hexToBinary(hex: string): string {
@@ -329,29 +468,66 @@ export async function validatePkcs7(pkcs7Hex: string): Promise<FirmaValidationRe
 
   diagnostics.push(`built chain of length ${chain.length}`)
 
+  let chainVerified = false
+  let resolverUsed = false
+
   try {
     forge.pki.verifyCertificateChain(caStore, chain)
+    chainVerified = true
   } catch (err) {
     const e = err as { message?: string; error?: string }
     const reason = e.message || e.error || 'unknown chain verification failure'
     const expired = /not yet valid|has expired/i.test(reason)
-    return {
-      trusted: false,
-      chain: expired
-        ? { status: 'expired', reason }
-        : { status: 'untrusted-root', reason },
-      ocsp: { status: 'not-checked', reason: 'chain rejected' },
-      summary: expired
-        ? 'Certificado expirado o aun no valido'
-        : 'Cadena no se ancla en una raiz confiable',
-      diagnostics: [...diagnostics, reason],
+
+    if (expired) {
+      return {
+        trusted: false,
+        chain: { status: 'expired', reason },
+        ocsp: { status: 'not-checked', reason: 'chain rejected' },
+        summary: 'Certificado expirado o aun no valido',
+        diagnostics: [...diagnostics, reason],
+      }
+    }
+
+    // ATT-441: Try resolver fallback for cross-border signatures
+    diagnostics.push(`bundled validation failed: ${reason} — trying resolver`)
+    const resolved = await resolveRemoteAnchors(chain, diagnostics)
+
+    if (resolved && resolved.certs.length > 0) {
+      try {
+        // Build a temporary CA store with resolved + bundled anchors
+        const tempStore = forge.pki.createCaStore([
+          ...anchors.map((a) => a.cert),
+          ...resolved.certs,
+        ])
+        // Also add resolved certs to the pool for chain building
+        const extendedPool = [...certs, ...resolved.certs]
+        chain = buildChain(endEntity, extendedPool)
+        forge.pki.verifyCertificateChain(tempStore, chain)
+        chainVerified = true
+        resolverUsed = true
+        diagnostics.push(`resolver-backed validation succeeded (${resolved.origin})`)
+      } catch (retryErr) {
+        const retryReason = (retryErr as Error).message
+        diagnostics.push(`resolver-backed validation also failed: ${retryReason}`)
+      }
+    }
+
+    if (!chainVerified) {
+      return {
+        trusted: false,
+        chain: { status: 'untrusted-root', reason },
+        ocsp: { status: 'not-checked', reason: 'chain rejected' },
+        summary: 'Cadena no se ancla en una raiz confiable',
+        diagnostics: [...diagnostics, reason],
+      }
     }
   }
 
   const root = chain[chain.length - 1]
   const rootSubject = root.subject.getField('CN')?.value ?? '<unknown root>'
-  const rootOrigin = findOrigin(root)
-  diagnostics.push(`chain anchored to: ${rootSubject} (origin=${rootOrigin})`)
+  const rootOrigin = resolverUsed ? extractCountry(root) ?? 'resolver' : findOrigin(root)
+  diagnostics.push(`chain anchored to: ${rootSubject} (origin=${rootOrigin}${resolverUsed ? ', via resolver' : ''})`)
 
   // OCSP — STUB. See module header.
   const ocspStatus: FirmaValidationResult['ocsp'] = {
@@ -365,7 +541,11 @@ export async function validatePkcs7(pkcs7Hex: string): Promise<FirmaValidationRe
       ? 'CR Firma Digital'
       : rootOrigin === 'attestto'
         ? 'Attestto'
-        : rootOrigin
+        : rootOrigin === 'br'
+          ? 'BR ICP-Brasil'
+          : rootOrigin === 'ar'
+            ? 'AR PKI Federal'
+            : rootOrigin
 
   // Chain anchors cleanly and signer cert is within validity. We mark as
   // trusted with an explicit OCSP-pending caveat in the summary. ATT-261 will
