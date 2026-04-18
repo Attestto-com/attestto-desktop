@@ -132,9 +132,12 @@ function createTray(): void {
 app.whenReady().then(async () => {
   // Warm up safeStorage so macOS Keychain prompts ONCE, before both
   // vault-service and station-keys try to decrypt independently.
+  // Must do a full encrypt+decrypt round-trip — encrypt alone doesn't
+  // pre-authorize the decrypt Keychain entry on macOS.
   if (safeStorage.isEncryptionAvailable()) {
     try {
-      safeStorage.encryptString('warmup')
+      const warm = safeStorage.encryptString('warmup')
+      safeStorage.decryptString(warm)
     } catch { /* swallow — just triggering the Keychain prompt */ }
   }
 
