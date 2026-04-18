@@ -28,6 +28,7 @@ import type {
   DirectPostBody,
 } from '@attestto/vc-sdk'
 import type { VaultCredential } from '../../shared/vault-api'
+import { canonicalize } from '../../shared/jcs'
 
 export type OID4VPStep = 'idle' | 'scanning' | 'parsing' | 'consent' | 'signing' | 'submitting' | 'done' | 'error'
 
@@ -188,7 +189,7 @@ export function useOid4vp() {
         vpHash,
       }
 
-      const proofBytes = new TextEncoder().encode(JSON.stringify(proofInput))
+      const proofBytes = new TextEncoder().encode(canonicalize(proofInput))
       const signatureBytes: Uint8Array = await api.vault.sign(proofBytes)
       const proofValue = uint8ToBase64url(signatureBytes)
 
