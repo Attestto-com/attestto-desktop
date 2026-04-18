@@ -72,3 +72,16 @@ Per the did:sns spec ABNF, the `.sol` TLD is **never** included in the DID — t
 3. Use dashes to flatten: `padron-tse.go-cr` NOT `padron.tse.go-cr`
 
 CI guardrail in `build.yml` rejects both `.sol` suffix and 3+ level depth.
+
+### Firma Digital architecture
+
+Two paths, one validator:
+
+**Verify path (WORKING):** User signs externally (physical card OR cloud/phone — any BCCR-issued cert) → PKCS#7 arrives → `firma-validator.ts` validates cert chain against BCCR trust roots from `@attestto/trust`. No API integration needed. Attestto just verifies what the user already signed.
+
+**Sign path (FUTURE, PKCS#11):** User inserts physical smart card → desktop signs directly via `pkcs11js`. Requires ATT-340/377/379/380/385. Not yet implemented.
+
+Key files:
+- `src/main/pki/firma-validator.ts` — PKCS#7 parser + cert chain validation
+- `src/main/pki/firma-ipc.ts` — `firma:validate-pkcs7` IPC channel
+- Trust roots from `@attestto/trust` (`countries/cr/current/*.pem`)
