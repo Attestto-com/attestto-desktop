@@ -173,7 +173,9 @@ export function useOid4vp() {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
         type: ['VerifiablePresentation'],
         holder: holderDid,
-        verifiableCredential: creds,
+        // VaultCredential (vault storage shape) ↔ VerifiableCredential (vc-sdk):
+        // same impedance bridge used above (see matchCredentials calls).
+        verifiableCredential: creds as unknown as VerifiableCredential[],
       }
 
       // Build proof input and sign via IPC

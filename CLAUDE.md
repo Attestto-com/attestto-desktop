@@ -50,6 +50,7 @@ CedulaVerification, Credentials, DimexVerification, Exam, ExploreModules, Guardi
 - The `@attestto/verify` package is linked locally — if types break, add a `declare module` shim in `src/env.d.ts`
 - MRZ OCR code lives in `src/renderer/country/cr/mrz-ocr.ts` — this is the canonical OCR implementation for Costa Rica documents
 - Vault cipher is xsalsa20-poly1305 (NaCl secretbox) — never claim AES on any marketing surface
+- **Always update `CHANGELOG.md`** — every `src/` change gets a Keep-a-Changelog entry under `## [Unreleased]` (`### Added/Changed/Fixed/Security`), tagged with its `ATT-###`. **CI enforces this on PRs** (`build.yml` guardrail); use `[skip changelog]` in a commit message only for genuine non-functional chores.
 
 ### did:sns format rules (CI-enforced, spec §7.1)
 

@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: attestto-desktop
+          fetch-depth: 0
 
       - name: Checkout attestto-verify (sibling)
         uses: actions/checkout@v4
@@ -127,4 +128,26 @@ jobs:
             echo "::error::Source code contains internal/process comments that should not be public:"
             echo "$HITS"
             exit 1
+          fi
+
+      - name: Guardrail — CHANGELOG.md updated for src changes (PRs)
+        if: github.event_name == 'pull_request'
+        working-directory: attestto-desktop
+        env:
+          # base_ref is the PR target branch name (GitHub-controlled); pass via env
+          # and quote in-shell rather than interpolating ${{ }} into the script.
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          BASE="origin/$BASE_REF"
+          CHANGED=$(git diff --name-only "$BASE"...HEAD)
+          echo "Changed vs $BASE:"; echo "$CHANGED"
+          if echo "$CHANGED" | grep -qE '^src/' && ! echo "$CHANGED" | grep -qx 'CHANGELOG.md'; then
+            # Commit messages are piped into grep (never eval'd) — safe.
+            if git log "$BASE"..HEAD --format='%B' | grep -qiF '[skip changelog]'; then
+              echo "src/ changed without CHANGELOG.md — [skip changelog] found, allowed."
+            else
+              echo "::error::Changes under src/ require a CHANGELOG.md entry (Keep a Changelog, under ## [Unreleased]). Add one, or include [skip changelog] in a commit message."
+              exit 1
+            fi
           fi
