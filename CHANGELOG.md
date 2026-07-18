@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **[ATT-307]** Desktop ID verification flow — webcam face capture with liveness detection.
 - **[ATT-346]** W3C VC shape rendering in CredentialsPage with trust badges and labels.
 
+### Changed
+- Design system: reskinned the `--att-*` design tokens and Quasar brand variables to the CORTEX dashboard palette (institutional navy primary, slate secondary, teal accent) in both dark and light themes, so the desktop station and the CORTEX web dashboard read as one product. Token structure and typography scale unchanged — only palette values.
+
+### Fixed
+- Type-check: `useOid4vp.ts` now bridges `VaultCredential[] → VerifiableCredential[]` in the VP envelope (matching the existing impedance casts), fixing a `tsc` error that was breaking the CI type-check step.
+- **[ATT-790]** Firma Digital PKCS#7 signature parsing — `firma-validator.ts` now decodes with `{ strict: false, parseAllBytes: false }`, tolerating the trailing zero padding CR Firma Digital writes into the PDF `/Contents` placeholder. The previous boolean overload left `parseAllBytes: true`, throwing "Unparsed DER bytes remain" → "No se pudo leer la firma PKCS#7" / trust UNKNOWN for otherwise-valid signatures. Covered by the `firma-digital-real.pdf` end-to-end regression test.
+
 ## [0.1.0] - 2026-04-10
 
 ### Added

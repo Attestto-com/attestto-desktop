@@ -99,6 +99,10 @@ jobs:
         working-directory: attestto-desktop
         run: pnpm type-check
 
+      - name: Run tests
+        working-directory: attestto-desktop
+        run: pnpm test
+
       - name: Build (electron-vite)
         working-directory: attestto-desktop
         run: pnpm exec electron-vite build

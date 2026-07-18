@@ -312,12 +312,16 @@ function hexToBinary(hex: string): string {
 
 function extractCertsFromPkcs7(pkcs7Hex: string): forge.pki.Certificate[] {
   const binary = hexToBinary(pkcs7Hex)
-  // strict=false: PKCS#7 /Contents blobs are often padded with trailing
-  // zero bytes inside the PDF, which forge would otherwise reject with
-  // "Unparsed DER bytes remain". (@types/node-forge 1.3.x only exposes
-  // the boolean form; the {strict, parseAllBytes} object form was an
-  // incorrect call signature.)
-  const asn1 = forge.asn1.fromDer(binary, false)
+  // CR Firma Digital PKCS#7 /Contents blobs are padded with trailing zero
+  // bytes inside the PDF /Contents placeholder. node-forge's boolean overload
+  // sets parseAllBytes:true, which rejects that padding with "Unparsed DER
+  // bytes remain". The {strict, parseAllBytes} object form (valid at runtime)
+  // tolerates it; @types/node-forge 1.3.x only declares the boolean overload,
+  // hence the cast.
+  const asn1 = forge.asn1.fromDer(binary, {
+    strict: false,
+    parseAllBytes: false,
+  } as unknown as boolean)
   const msg = forge.pkcs7.messageFromAsn1(asn1) as unknown as {
     certificates?: forge.pki.Certificate[]
   }

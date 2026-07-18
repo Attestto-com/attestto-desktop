@@ -2,28 +2,27 @@
 
 // ── Theme variables ──
 :root {
-  // Surfaces — institutional dark slate (matches attestto.org)
-  --att-bg-base: #0f1923;
-  --att-bg-surface: #162029;
-  --att-bg-elevated: #1e2a34;
-  --att-border: rgba(255, 255, 255, 0.08);
-  --att-border-accent: rgba(16, 185, 129, 0.2);
+  // Surfaces — institutional navy (aligned with the CORTEX dashboard palette
+  // so desktop + CORTEX read as one product; ATT-1004/design-system).
+  --att-bg-base: #0d1520;
+  --att-bg-surface: #111a28;
+  --att-bg-elevated: #141e2e;
+  --att-border: #243044;
+  --att-border-accent: rgba(74, 142, 200, 0.28);
 
-  // Text — high contrast
-  // Bumped legibility 2026-04-08: muted/disabled were too dim against
-  // the dark slate background. Each tier moved one step brighter.
-  --att-text-title: #f8fafc;
-  --att-text-subtitle: #f1f5f9;
-  --att-text-body: #e2e8f0;
-  --att-text-muted: #cbd5e1;
-  --att-text-disabled: #94a3b8;
+  // Text — high contrast on navy
+  --att-text-title: #f1f4f8;
+  --att-text-subtitle: #e4eaf2;
+  --att-text-body: #cfd8e4;
+  --att-text-muted: #a8b4c4;
+  --att-text-disabled: #7a8698;
 
-  // Brand — single source for accent color
-  // Change these 3 values to retheme the entire UI
-  --att-primary: #10b981;
-  --att-primary-dark: #0d9488;
-  --att-primary-soft: rgba(16, 185, 129, 0.08);
-  --att-primary-border: rgba(16, 185, 129, 0.2);
+  // Brand — single source for accent color (CORTEX blue/teal family).
+  // Change these values to retheme the entire UI.
+  --att-primary: #4a8ec8;
+  --att-primary-dark: #3a7ab4;
+  --att-primary-soft: rgba(74, 142, 200, 0.10);
+  --att-primary-border: rgba(74, 142, 200, 0.25);
 
   // Typography scale — all sizes relative to base (rem)
   // base = html font-size (controlled by accessibility +/- in settings)
@@ -37,23 +36,25 @@
   --att-text-2xl: 1.7rem;   // ~32px — page titles
 }
 
-// Light theme overrides — pale green tint, never pure white
+// Light theme overrides — CORTEX institutional light (cool grey, navy ink)
 body.body--light {
-  --att-bg-base: #f1f5f9;
-  --att-bg-surface: #f8fafc;
-  --att-bg-elevated: #e2e8f0;
-  --att-bg-card: rgba(255, 255, 255, 0.85);
-  --att-border: rgba(16, 185, 129, 0.12);
-  --att-border-accent: rgba(16, 185, 129, 0.25);
+  --att-bg-base: #f8f9fb;
+  --att-bg-surface: #ffffff;
+  --att-bg-elevated: #f1f3f6;
+  --att-bg-card: rgba(255, 255, 255, 0.9);
+  --att-border: #dde1e7;
+  --att-border-accent: rgba(30, 58, 95, 0.22);
 
-  --att-text-title: #0f172a;
-  --att-text-subtitle: #1e293b;
-  --att-text-body: #1e293b;
-  --att-text-muted: #475569;
-  --att-text-disabled: #64748b;
+  --att-text-title: #1a2332;
+  --att-text-subtitle: #1a2332;
+  --att-text-body: #2a3547;
+  --att-text-muted: #5a6578;
+  --att-text-disabled: #8a94a4;
 
-  --att-primary-soft: rgba(16, 185, 129, 0.08);
-  --att-primary-border: rgba(16, 185, 129, 0.2);
+  --att-primary: #1e3a5f;
+  --att-primary-dark: #162d4a;
+  --att-primary-soft: rgba(30, 58, 95, 0.08);
+  --att-primary-border: rgba(30, 58, 95, 0.20);
 }
 
 // ── Text size classes (use these everywhere) ──
