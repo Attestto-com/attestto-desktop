@@ -17,6 +17,109 @@ const router = useRouter()
 const vault = useVaultStore()
 const persona = usePersonaStore()
 const camera = useCamera()
+// Vue 3 templates only auto-unwrap top-level refs, not refs on plain objects.
+// Expose camera.error.value via a computed so {{ cameraError }} renders the string.
+const cameraError = computed(() => camera.error.value)
+
+// Locale-aware copy. Desktop app has no vue-i18n yet, so we keep a local
+// ES/EN map here and pick by navigator.language. When app-wide i18n lands,
+// swap STRINGS lookups for useI18n() in one place.
+const LOCALE: 'es' | 'en' =
+  typeof navigator !== 'undefined' && navigator.language.startsWith('en') ? 'en' : 'es'
+const SPEECH_LANG = LOCALE === 'en' ? 'en-US' : 'es-ES'
+
+const STRINGS = {
+  es: {
+    voice: {
+      positionFace: 'Posiciona tu rostro dentro del óvalo. Cuando estés listo, presiona iniciar verificación.',
+      detectingFace: 'Detectando rostro...',
+      faceNotDetected: 'No se detectó un rostro. Posiciona tu cara dentro del óvalo.',
+      faceDetected: 'Rostro detectado. Iniciando verificación.',
+      movementNotDetected: 'No se detectó el movimiento.',
+      glassesDetected: 'Detectamos que usas lentes. Por favor, quítatelos y repite la verificación.',
+      verificationComplete: 'Verificación completada. Tu prueba de vida se almacenó en tu bóveda.',
+    },
+    feedback: {
+      noFace: 'No se detecta un rostro — mira hacia la cámara',
+      tooFar: 'Acércate más a la cámara',
+      moveLeft: 'Mueve la cara hacia la izquierda',
+      moveRight: 'Mueve la cara hacia la derecha',
+      moveDown: 'Baja un poco la cabeza',
+      moveUp: 'Sube un poco la cabeza',
+      center: 'Centra tu rostro en el óvalo',
+      tryAgain: 'Intenta de nuevo',
+      returnCenter: 'Vuelve al centro',
+      faceLost: 'Rostro perdido',
+    },
+    challenges: [
+      { id: 'center', instruction: 'Mira al frente', voice: 'Mira directamente a la cámara', icon: 'face' },
+      { id: 'left', instruction: 'Gira a la izquierda', voice: 'Ahora, gira la cabeza hacia la izquierda', icon: 'arrow_back', direction: 'left' },
+      { id: 'right', instruction: 'Gira a la derecha', voice: 'Ahora gira hacia la derecha', icon: 'arrow_forward', direction: 'right' },
+      { id: 'up', instruction: 'Levanta la cabeza', voice: 'Levanta la cabeza un poco', icon: 'arrow_upward', direction: 'up' },
+      { id: 'blink', instruction: 'Parpadea dos veces', voice: 'Por último, parpadea dos veces', icon: 'visibility_off' },
+    ],
+    ui: {
+      sectionTitle: 'Verificación biométrica',
+      sectionHint: 'Prueba de vida con tu cámara local. Las instrucciones se anuncian por voz para que las escuches sin mirar la pantalla.',
+      idleTitle: 'Verificación de vida',
+      idleHint: 'Te guiaremos por cinco poses faciales. Las instrucciones por voz están activadas.',
+      start: 'Comenzar',
+      startVerification: 'Iniciar verificación',
+      voiceOn: 'Voz activada',
+      voiceOff: 'Voz desactivada',
+      cancel: 'Cancelar',
+      glassesRound: 'Ronda sin lentes',
+      placeholderHint: 'Posiciona tu rostro en el óvalo',
+      starting: 'Iniciando cámara...',
+    },
+  },
+  en: {
+    voice: {
+      positionFace: 'Position your face inside the oval. When ready, press start verification.',
+      detectingFace: 'Detecting face...',
+      faceNotDetected: 'No face detected. Position your face inside the oval.',
+      faceDetected: 'Face detected. Starting verification.',
+      movementNotDetected: 'Movement not detected.',
+      glassesDetected: 'We detected you are wearing glasses. Please remove them and repeat the verification.',
+      verificationComplete: 'Verification complete. Your proof of life was stored in your vault.',
+    },
+    feedback: {
+      noFace: 'No face detected — look at the camera',
+      tooFar: 'Move closer to the camera',
+      moveLeft: 'Move your face to the left',
+      moveRight: 'Move your face to the right',
+      moveDown: 'Lower your head a bit',
+      moveUp: 'Raise your head a bit',
+      center: 'Center your face in the oval',
+      tryAgain: 'Try again',
+      returnCenter: 'Return to center',
+      faceLost: 'Face lost',
+    },
+    challenges: [
+      { id: 'center', instruction: 'Look forward', voice: 'Look directly at the camera', icon: 'face' },
+      { id: 'left', instruction: 'Turn left', voice: 'Now, turn your head to the left', icon: 'arrow_back', direction: 'left' },
+      { id: 'right', instruction: 'Turn right', voice: 'Now turn to the right', icon: 'arrow_forward', direction: 'right' },
+      { id: 'up', instruction: 'Lift your head', voice: 'Lift your head a little', icon: 'arrow_upward', direction: 'up' },
+      { id: 'blink', instruction: 'Blink twice', voice: 'Finally, blink twice', icon: 'visibility_off' },
+    ],
+    ui: {
+      sectionTitle: 'Biometric verification',
+      sectionHint: 'Liveness with your local camera. Instructions are announced by voice so you can hear them without looking at the screen.',
+      idleTitle: 'Liveness verification',
+      idleHint: 'We will guide you through five face poses. Voice instructions are on by default.',
+      start: 'Start',
+      startVerification: 'Start verification',
+      voiceOn: 'Voice on',
+      voiceOff: 'Voice off',
+      cancel: 'Cancel',
+      glassesRound: 'Glasses round',
+      placeholderHint: 'Position your face in the oval',
+      starting: 'Starting camera...',
+    },
+  },
+} as const
+
+const S = STRINGS[LOCALE]
 
 const step = ref(1)
 const livenessStatus = ref<'idle' | 'starting' | 'live' | 'checking' | 'verified' | 'failed'>('idle')
@@ -69,7 +172,7 @@ function speak(text: string): Promise<void> {
     // Cancel any ongoing speech
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'es-ES'
+    utterance.lang = SPEECH_LANG
     utterance.rate = 0.9
     utterance.onend = () => resolve()
     utterance.onerror = () => resolve()
@@ -78,21 +181,10 @@ function speak(text: string): Promise<void> {
 }
 
 // ── Liveness challenge flow ──
-interface LivenessChallenge {
-  id: string
-  instruction: string
-  voice: string        // what the voice says (can differ from on-screen text)
-  icon: string
-  direction?: string
-}
-
-const challenges: LivenessChallenge[] = [
-  { id: 'center', instruction: 'Mira al frente', voice: 'Mira directamente a la cámara', icon: 'face' },
-  { id: 'left', instruction: 'Gira a la izquierda', voice: 'Ahora, gira la cabeza hacia la izquierda', icon: 'arrow_back', direction: 'left' },
-  { id: 'right', instruction: 'Gira a la derecha', voice: 'Ahora gira hacia la derecha', icon: 'arrow_forward', direction: 'right' },
-  { id: 'up', instruction: 'Levanta la cabeza', voice: 'Levanta la cabeza un poco', icon: 'arrow_upward', direction: 'up' },
-  { id: 'blink', instruction: 'Parpadea dos veces', voice: 'Por último, parpadea dos veces', icon: 'visibility_off' },
-]
+// Challenges are sourced from STRINGS[LOCALE].challenges so on-screen text
+// and voice copy stay in sync with the active locale. Pose detection uses
+// the `id` field, which is locale-independent.
+const challenges = S.challenges
 
 const currentChallengeIndex = ref(0)
 const challengeStatus = ref<'waiting' | 'passed'>('waiting')
@@ -231,32 +323,19 @@ function detectGlasses(): boolean {
 
 /** Generate directional feedback from skin analysis */
 function getFeedback(analysis: SkinAnalysis): string {
-  // No skin detected at all
-  if (analysis.totalRatio < 0.03) {
-    return 'No se detecta un rostro — mira hacia la camara'
-  }
-
-  // Very low — too far
-  if (analysis.totalRatio < 0.08) {
-    return 'Acercate mas a la camara'
-  }
-
-  // Face detected but off-center (note: video is mirrored)
-  const lr = analysis.leftRatio - analysis.rightRatio
-  const tb = analysis.topRatio - analysis.bottomRatio
+  if (analysis.totalRatio < 0.03) return S.feedback.noFace
+  if (analysis.totalRatio < 0.08) return S.feedback.tooFar
 
   // Video is mirrored (scaleX -1) — swap left/right hints
-  if (lr > 0.12) return 'Mueve la cara hacia la izquierda'
-  if (lr < -0.12) return 'Mueve la cara hacia la derecha'
-  if (tb > 0.15) return 'Baja un poco la cabeza'
-  if (tb < -0.15) return 'Sube un poco la cabeza'
+  const lr = analysis.leftRatio - analysis.rightRatio
+  const tb = analysis.topRatio - analysis.bottomRatio
+  if (lr > 0.12) return S.feedback.moveLeft
+  if (lr < -0.12) return S.feedback.moveRight
+  if (tb > 0.15) return S.feedback.moveDown
+  if (tb < -0.15) return S.feedback.moveUp
 
-  // Centered enough
-  if (analysis.centerRatio > 0.15) {
-    return '' // Good position — no feedback needed
-  }
-
-  return 'Centra tu rostro en el ovalo'
+  if (analysis.centerRatio > 0.15) return ''
+  return S.feedback.center
 }
 
 /** Start continuous face detection loop (runs while camera is live) */
@@ -306,7 +385,7 @@ async function startCamera() {
     faceFeedback.value = ''
     // Start continuous face detection while camera is live
     startFaceDetectionLoop()
-    await speak('Posiciona tu rostro dentro del óvalo. Cuando estés listo, presiona iniciar verificación.')
+    await speak(S.voice.positionFace)
   }
 }
 
@@ -316,17 +395,32 @@ async function startChallenge() {
   challengeStatus.value = 'waiting'
 
   // Wait for a face before starting
-  await speak('Detectando rostro...')
+  await speak(S.voice.detectingFace)
   const found = await waitForFace(10000)
   if (!found) {
-    await speak('No se detectó un rostro. Posiciona tu cara dentro del óvalo.')
+    await speak(S.voice.faceNotDetected)
     livenessStatus.value = 'live'
     return
   }
 
   stopFaceDetectionLoop() // challenges use their own detection
-  await speak('Rostro detectado. Iniciando verificación.')
+  await speak(S.voice.faceDetected)
   await runChallengeSequence()
+}
+
+/** User-initiated cancel — stops camera + speech, returns to idle so the
+ * Comenzar button reappears. Does not delete prior vault captures. */
+function cancelLiveness() {
+  if (window.speechSynthesis) window.speechSynthesis.cancel()
+  stopFaceDetectionLoop()
+  camera.stop()
+  livenessStatus.value = 'idle'
+  currentChallengeIndex.value = 0
+  challengeStatus.value = 'waiting'
+  faceDetected.value = false
+  faceFeedback.value = ''
+  glassesDetected.value = false
+  glassesRound.value = false
 }
 
 /** Wait for a specific face movement/action to be detected */
@@ -340,7 +434,7 @@ async function waitForChallenge(challengeId: string, timeoutMs = 10000): Promise
 
     // No face at all → fail
     if (current.totalRatio < 0.03) {
-      faceFeedback.value = 'Rostro perdido'
+      faceFeedback.value = S.feedback.faceLost
       await new Promise(resolve => setTimeout(resolve, 300))
       continue
     }
@@ -392,12 +486,12 @@ async function runChallengeSequence() {
     let detected = await waitForChallenge(challenges[i].id, 8000)
     if (!detected) {
       // Retry once before failing
-      faceFeedback.value = 'Intenta de nuevo'
+      faceFeedback.value = S.feedback.tryAgain
       await new Promise(resolve => setTimeout(resolve, 500))
       detected = await waitForChallenge(challenges[i].id, 8000)
     }
     if (!detected) {
-      await speak('No se detectó el movimiento.')
+      await speak(S.voice.movementNotDetected)
       livenessStatus.value = 'live'
       startFaceDetectionLoop()
       return
@@ -405,7 +499,7 @@ async function runChallengeSequence() {
 
     challengeStatus.value = 'passed'
     // Pause so user can return to center before next challenge
-    faceFeedback.value = 'Vuelve al centro'
+    faceFeedback.value = S.feedback.returnCenter
     await new Promise(resolve => setTimeout(resolve, 800))
   }
 
@@ -417,7 +511,7 @@ async function runChallengeSequence() {
     const hasGlasses = detectGlasses()
     if (hasGlasses) {
       glassesDetected.value = true
-      await speak('Detectamos que usas lentes. Por favor, quítatelos y repite la verificación.')
+      await speak(S.voice.glassesDetected)
       // Reset for second round
       glassesRound.value = true
       currentChallengeIndex.value = 0
@@ -428,7 +522,7 @@ async function runChallengeSequence() {
     }
   }
 
-  await speak('Verificación completada. Tu prueba de vida se almacenó en tu bóveda.')
+  await speak(S.voice.verificationComplete)
 
   // Store biometric proof in vault so we don't repeat this.
   // Real face descriptor via @vladmandic/face-api → SHA-256 hash → inner-encrypted
@@ -513,15 +607,17 @@ const kycProviders = [
 
 const hasVerificationOptions = computed(() => documentPlugins.value.length > 0 || kycProviders.length > 0)
 
-/** Reset the local "completed" gate so the user can re-run the biometric flow.
- * Does NOT delete prior captures from the vault — the new run will append a
- * fresh BiometricCapture when it completes. Routes to the document flow
- * because the selfie/liveness UI lives inside the cédula verification step. */
+/** Reset the local "completed" gate so the user can re-run the biometric flow
+ * in-place. Does NOT delete prior captures from the vault — the new run will
+ * append a fresh BiometricCapture when it completes. */
 function repeatBiometric() {
   localStorage.removeItem('attestto-liveness-done')
   livenessCompleted.value = false
-  const target = documentPlugins.value[0]?.route
-  if (target) router.push({ path: target, query: { redo: '1' } })
+  livenessStatus.value = 'idle'
+  currentChallengeIndex.value = 0
+  glassesDetected.value = false
+  glassesRound.value = false
+  faceFeedback.value = ''
 }
 
 onUnmounted(() => {
@@ -564,6 +660,168 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+
+      <!-- Biometric liveness — desktop camera with voice-guided pose challenges.
+           Voice is the accessibility primitive: the user cannot read the screen
+           while turning their head, so each pose challenge is announced via
+           Web Speech API in the active locale before detection starts. -->
+      <template v-if="!livenessCompleted && !hasIdentityCredential">
+        <div class="verification-section-title">{{ S.ui.sectionTitle }}</div>
+        <div class="att-text-muted q-mb-md" style="font-size: var(--att-text-xs);">
+          {{ S.ui.sectionHint }}
+        </div>
+
+        <div class="camera-placeholder q-mb-md">
+          <!-- Idle / failed state — Start button -->
+          <div
+            v-if="livenessStatus === 'idle' || livenessStatus === 'failed'"
+            class="camera-placeholder__idle"
+          >
+            <q-icon name="videocam" size="48px" color="primary" />
+            <div class="text-weight-medium q-mt-sm">{{ S.ui.idleTitle }}</div>
+            <div
+              class="att-text-muted q-mt-xs"
+              style="font-size: var(--att-text-xs); max-width: 320px; text-align: center;"
+            >
+              {{ S.ui.idleHint }}
+            </div>
+            <q-btn
+              class="q-mt-md"
+              unelevated no-caps
+              color="primary"
+              icon="play_arrow"
+              :label="S.ui.start"
+              @click="startCamera"
+            />
+            <div
+              v-if="livenessStatus === 'failed' && cameraError"
+              class="q-mt-sm"
+              style="color: var(--q-negative); font-size: var(--att-text-xs);"
+            >
+              {{ cameraError }}
+            </div>
+          </div>
+
+          <!-- Starting state — spinner while getUserMedia resolves -->
+          <div
+            v-else-if="livenessStatus === 'starting'"
+            class="camera-placeholder__idle"
+          >
+            <q-spinner-dots size="40px" color="primary" />
+            <div class="att-text-muted q-mt-sm" style="font-size: var(--att-text-xs);">
+              {{ S.ui.starting }}
+            </div>
+          </div>
+
+          <!-- Camera live (waiting + checking) -->
+          <div v-else class="camera-feed-wrapper">
+            <video
+              :ref="(el) => camera.bindVideo(el as HTMLVideoElement | null)"
+              autoplay
+              muted
+              playsinline
+              class="camera-feed-video"
+            ></video>
+
+            <!-- Oval frame -->
+            <div class="camera-feed-frame"></div>
+
+            <!-- Pre-challenge: face position feedback -->
+            <div v-if="livenessStatus === 'live'" class="challenge-ready-overlay">
+              <div class="challenge-instruction__text">
+                {{ faceFeedback || S.ui.placeholderHint }}
+              </div>
+            </div>
+
+            <!-- Active challenge: arrow + bottom instruction bar -->
+            <template v-else-if="livenessStatus === 'checking'">
+              <q-icon
+                v-if="currentChallenge.direction === 'left'"
+                name="arrow_back"
+                size="56px"
+                color="primary"
+                class="challenge-arrow challenge-arrow--left"
+              />
+              <q-icon
+                v-else-if="currentChallenge.direction === 'right'"
+                name="arrow_forward"
+                size="56px"
+                color="primary"
+                class="challenge-arrow challenge-arrow--right"
+              />
+              <q-icon
+                v-else-if="currentChallenge.direction === 'up'"
+                name="arrow_upward"
+                size="56px"
+                color="primary"
+                class="challenge-arrow challenge-arrow--up"
+              />
+
+              <!-- Progress bar (top) -->
+              <div class="challenge-overlay">
+                <div class="challenge-progress">
+                  <div
+                    class="challenge-progress__bar"
+                    :style="{ width: challengeProgress + '%' }"
+                  ></div>
+                </div>
+                <div v-if="glassesDetected && glassesRound" style="padding-top: 0.5rem; display: flex; justify-content: center;">
+                  <div class="glasses-banner">
+                    <q-icon name="visibility" size="14px" /> {{ S.ui.glassesRound }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Instruction (bottom) -->
+              <div class="challenge-instruction">
+                <div class="challenge-instruction__icon">
+                  <q-icon :name="currentChallenge.icon" size="28px" color="white" />
+                </div>
+                <div class="challenge-instruction__text">
+                  {{ currentChallenge.instruction }}
+                </div>
+                <div class="challenge-instruction__step">
+                  {{ currentChallengeIndex + 1 }} / {{ challenges.length }}
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Controls: voice toggle + start/cancel -->
+        <div
+          v-if="livenessStatus === 'live' || livenessStatus === 'starting' || livenessStatus === 'checking'"
+          class="liveness-controls q-mb-lg"
+        >
+          <q-btn
+            flat dense no-caps
+            :icon="voiceEnabled ? 'volume_up' : 'volume_off'"
+            :label="voiceEnabled ? S.ui.voiceOn : S.ui.voiceOff"
+            :color="voiceEnabled ? 'primary' : 'grey-6'"
+            size="sm"
+            @click="voiceEnabled = !voiceEnabled"
+          />
+          <div style="display: flex; gap: 0.5rem;">
+            <q-btn
+              v-if="livenessStatus === 'live'"
+              unelevated no-caps
+              color="primary"
+              icon="check_circle"
+              :label="S.ui.startVerification"
+              :disable="!faceDetected"
+              @click="startChallenge"
+            />
+            <q-btn
+              flat dense no-caps
+              icon="close"
+              :label="S.ui.cancel"
+              color="grey-6"
+              size="sm"
+              @click="cancelLiveness"
+            />
+          </div>
+        </div>
+      </template>
 
       <!-- Country document plugins -->
       <template v-if="documentPlugins.length > 0">

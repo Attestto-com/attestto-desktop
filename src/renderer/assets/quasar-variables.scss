@@ -8,11 +8,13 @@ $body-font-size: 1rem;
 $min-line-height: 1.4;
 $button-font-size: 1rem;
 
-$primary: #6366f1;
-$secondary: #a855f7;
-$accent: #22d3ee;
-$dark: #0f172a;
-$dark-page: #020617;
+// Brand aligned with the CORTEX dashboard palette (navy primary, slate
+// secondary, teal accent) so desktop + CORTEX read as one product.
+$primary: #1e3a5f;
+$secondary: #5a6578;
+$accent: #3b82a0;
+$dark: #111a28;
+$dark-page: #0d1520;
 // Was #10b981 (emerald-500) — failed WCAG AA against white text (~2.5:1).
 // Darkened to emerald-700 so badges/buttons with white text are legible (~6.3:1).
 // The vibrant emerald is still used for soft accents/borders via --att-primary-soft.
