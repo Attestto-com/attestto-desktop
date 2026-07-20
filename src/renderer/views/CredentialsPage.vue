@@ -315,7 +315,7 @@ const sortedCredentials = computed(() =>
 </script>
 
 <template>
-  <q-page class="page-centered">
+  <q-page class="page-centered" data-testid="view-credentials-root">
     <div class="page-centered__container" style="max-width: 760px;">
       <div class="text-h4 text-weight-bold q-mb-sm">Credenciales</div>
       <div class="att-text-body q-mb-xl">

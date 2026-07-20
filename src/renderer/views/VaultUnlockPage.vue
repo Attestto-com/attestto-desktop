@@ -58,6 +58,7 @@ function goToRecovery() {
           class="full-width q-mb-md"
           size="lg"
           :loading="vault.loading"
+          data-testid="vault-create-btn"
           @click="createVault"
         />
 

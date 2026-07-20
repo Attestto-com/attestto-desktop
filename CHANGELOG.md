@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **[ATT-337]** Guardian recovery shard signing — shards are now signed with real ed25519 key (was empty string).
 
 ### Added
+- `data-testid` anchors on the vault-create button and the Identity, Credentials, Settings, Pdf, and cédula-verification view roots for E2E targeting.
 - E2E test hook: `ATTESTTO_E2E=1` env flag skips mesh startup for deterministic offline test runs.
 - **[ATT-280]** Vault auto-lock on system sleep and screen lock via `powerMonitor`.
 - **[ATT-362]** Desktop release CI — matrix build for .dmg / .exe / .AppImage via GitHub Actions.
