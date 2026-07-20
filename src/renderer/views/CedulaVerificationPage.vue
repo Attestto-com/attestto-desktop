@@ -230,6 +230,57 @@ async function startMobileCapture() {
   })
 }
 
+/**
+ * Reset the whole verification to a clean slate. Clears the persisted session
+ * (the reason a bad scan kept coming back on reload), tears down any active
+ * mobile capture listener, wipes captured images / OCR / validation state, and
+ * returns to the capture-method chooser so the user can start over.
+ */
+function restartVerification() {
+  if (captureEventCleanup) { captureEventCleanup(); captureEventCleanup = null }
+
+  // Drop the persisted (possibly bad) session + liveness flag.
+  localStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem('attestto-liveness-done')
+
+  // Captured images + extracted data.
+  frontCapture.value = null
+  backCapture.value = null
+  selfieCapture.value = null
+  extractedData.value = null
+  docAnalysis.value = null
+  ocrSource.value = null
+
+  // Manual fields.
+  manualCedula.value = ''
+  manualNombre.value = ''
+  manualApellido1.value = ''
+  manualApellido2.value = ''
+
+  // Validation / face / padrón state.
+  tseValidation.value = { status: 'idle', message: '' }
+  faceMatchScore.value = null
+  pendingFaceDescriptors.value = null
+  mobileLiveness.value = null
+  ocrProgress.value = 0
+  ocrRunning.value = false
+  faceMatchDone.value = false
+  padronDownloading.value = false
+  padronLookupDone.value = false
+  padronMatch.value = null
+  nameMatch.value = null
+  padronAskCanton.value = false
+
+  // Capture UI + mobile session.
+  mobileSessionUrl.value = ''
+  mobileQrDataUrl.value = ''
+  mobileStatus.value = 'idle'
+  captureMode.value = 'choose'
+
+  // Back to the start.
+  step.value = 'front'
+}
+
 function startWebcamCapture() {
   captureMode.value = 'webcam'
 }
@@ -1290,6 +1341,17 @@ function goBack() {
             Tribunal Supremo de Elecciones — Republica de Costa Rica
           </div>
         </div>
+        <q-space />
+        <q-btn
+          v-if="step !== 'front' || captureMode !== 'choose'"
+          flat dense no-caps
+          icon="restart_alt"
+          label="Empezar de nuevo"
+          class="att-text-muted"
+          @click="restartVerification"
+        >
+          <q-tooltip>Descarta el escaneo actual y reinicia la verificacion</q-tooltip>
+        </q-btn>
       </div>
 
       <!-- Step indicator -->
