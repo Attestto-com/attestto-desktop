@@ -41,6 +41,18 @@ const handleWeb = computed(() => {
   return `cr-${clean}.attestto.id`
 })
 
+// The handle embeds the cédula — mask it for the always-visible display (the
+// full handle stays available under "Detalles técnicos" for copy). Keep the
+// last 4 digits, mask the rest: cr-•••••0877.attestto.id
+function maskCedula(clean: string): string {
+  return clean.length <= 4 ? '•'.repeat(clean.length) : '•'.repeat(clean.length - 4) + clean.slice(-4)
+}
+const handleWebMasked = computed(() => {
+  if (!userCedula.value) return null
+  const clean = userCedula.value.replace(/[^0-9]/g, '')
+  return `cr-${maskCedula(clean)}.attestto.id`
+})
+
 const handleSns = computed(() => {
   if (!userCedula.value) return null
   const clean = userCedula.value.replace(/[^0-9]/g, '')
@@ -224,8 +236,8 @@ const profileComplete = computed(() => profileItems.value.every(i => i.done))
                   Verificada
                 </q-badge>
               </div>
-              <div v-if="handleWeb" class="identity-info__sub-handle">
-                {{ handleWeb }}
+              <div v-if="handleWebMasked" class="identity-info__sub-handle">
+                {{ handleWebMasked }}
               </div>
               <div class="att-text-muted" style="margin-top: 0.25rem;">
                 <q-icon
