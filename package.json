@@ -42,7 +42,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "@vladmandic/face-api": "^1.7.15",
     "@vueuse/core": "^14.2.1",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "better-sqlite3": "^12.8.0",
     "electron-updater": "^6.8.3",
     "iconv-lite": "^0.7.2",
@@ -105,7 +105,14 @@
       "esbuild"
     ],
     "overrides": {
-      "vite": "^6.4.2"
+      "vite": "^6.4.3",
+      "ws": "^8.21.0",
+      "form-data": "^4.0.6",
+      "@xmldom/xmldom": "^0.8.13",
+      "tmp": "^0.2.6",
+      "ip-address": "^10.1.1",
+      "tar": "^7.5.16",
+      "@babel/core": "^7.29.6"
     }
   }
 }
