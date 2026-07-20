@@ -195,9 +195,11 @@ export class CaptureServer {
     this.sessions.set(sessionId, session)
 
     const pubKeyHex = Buffer.from(keyPair.publicKey).toString('hex')
-    // attestto-present:// engagement — the mobile app derives the ws URL
-    // (ws://{ip}:{port}/ws/{sessionId}) and reads the desktop pubkey from ?pk=.
-    const url = `attestto-present://${localIP}:${this.port}/${sessionId}?pk=${pubKeyHex}`
+    // http:// engagement — the phone browser opens this desktop-served page,
+    // which then connects same-origin over ws:// (no HTTPS/mixed-content wall,
+    // same trick as the capture flow). The page reads the desktop pubkey from
+    // ?pk= and the session id from the path.
+    const url = `http://${localIP}:${this.port}/present/${sessionId}?pk=${pubKeyHex}`
     return { sessionId, url }
   }
 
@@ -267,9 +269,27 @@ export class CaptureServer {
       return
     }
 
-    // Capture page: /capture/{sessionId}  (ignore query string)
     const pathname = url.split('?')[0]
     console.log(`[capture] HTTP ${req.method} ${pathname} (sessions: ${[...this.sessions.keys()].join(', ')})`)
+
+    // Present-verify page: /present/{sessionId} — served to the phone so it can
+    // connect same-origin over ws:// (no HTTPS/mixed-content wall) and run the
+    // challenge → receive VP → verify flow entirely in-browser.
+    const presentMatch = pathname.match(/^\/present\/([a-z0-9-]+)$/)
+    if (presentMatch) {
+      const sessionId = presentMatch[1]
+      const session = this.sessions.get(sessionId)
+      if (!session || session.mode !== 'present' || Date.now() > session.expiresAt) {
+        res.writeHead(410, { 'Content-Type': 'text/html; charset=utf-8' })
+        res.end('<html><body style="font-family:system-ui;background:#0a0b0f;color:#fff;text-align:center;padding:3rem"><h1>Sesión expirada</h1><p>Generá un nuevo código QR desde el escritorio.</p></body></html>')
+        return
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.end(this.getPresentVerifyHTML(sessionId))
+      return
+    }
+
+    // Capture page: /capture/{sessionId}  (ignore query string)
     const captureMatch = pathname.match(/^\/capture\/([a-z0-9-]+)$/)
     if (captureMatch) {
       const sessionId = captureMatch[1]
@@ -433,6 +453,144 @@ export class CaptureServer {
 
   private emit(event: CaptureEvent): void {
     this.eventCallback?.(event)
+  }
+
+  /**
+   * The phone-side verifier page for a present session. Served over HTTP so the
+   * phone browser can connect same-origin over ws://. It connects, does the nacl
+   * key-exchange, sends a fresh challenge nonce, receives the desktop's signed
+   * VP, and verifies it fully in-browser: Ed25519 signature over the JCS proof
+   * input (pubkey extracted from the holder did:key), plus nonce binding.
+   */
+  private getPresentVerifyHTML(sessionId: string): string {
+    const wsUrl = `ws://${this.getLocalIP()}:${this.port}/ws/${sessionId}`
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#0a0b0f">
+  <title>Attestto — Verificar presentación</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,sans-serif;background:#0a0b0f;color:#fff;min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:24px 16px}
+    .brand{font-size:1.25rem;font-weight:700;margin-bottom:24px}
+    .brand .to{color:#7c3aed}
+    .card{width:100%;max-width:420px;background:#161822;border:1px solid #262a38;border-radius:16px;padding:24px;text-align:center}
+    .spinner{width:40px;height:40px;border:4px solid #262a38;border-top-color:#7c3aed;border-radius:50%;animation:spin 1s linear infinite;margin:16px auto}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .status{font-size:.9rem;color:#a0a0b0;margin-top:8px}
+    .result-icon{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:2rem}
+    .ok{background:rgba(34,197,94,.15);color:#22c55e}
+    .bad{background:rgba(239,68,68,.15);color:#ef4444}
+    h2{font-size:1.15rem;margin-bottom:4px}
+    .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #262a38;font-size:.85rem;text-align:left}
+    .row .k{color:#8b8fa3}
+    .row .v{color:#fff;word-break:break-all;text-align:right}
+    .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:.72rem;font-weight:600;margin:2px}
+    .b-ok{background:rgba(34,197,94,.15);color:#22c55e}
+    .b-bad{background:rgba(239,68,68,.15);color:#ef4444}
+    .details{margin-top:16px}
+  </style>
+</head>
+<body>
+  <div class="brand">attest<span class="to">to</span></div>
+  <div class="card" id="card">
+    <div class="spinner"></div>
+    <div class="status" id="status">Conectando con el escritorio…</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js" integrity="sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp" crossorigin="anonymous"></script>
+  <script>
+    const WS_URL = ${JSON.stringify(wsUrl)};
+    const DESKTOP_PK_HEX = new URLSearchParams(location.search).get('pk') || '';
+    let ws, sharedKey = null, challengeNonce = '';
+
+    const $ = id => document.getElementById(id);
+    const setStatus = t => { const s = $('status'); if (s) s.textContent = t; };
+
+    function hexToBytes(h){const a=new Uint8Array(h.length/2);for(let i=0;i<h.length;i+=2)a[i/2]=parseInt(h.substr(i,2),16);return a}
+    function bytesToHex(b){return Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join('')}
+    function b64urlToBytes(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const bin=atob(s);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a}
+    async function sha256hex(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return bytesToHex(new Uint8Array(buf))}
+    // Minimal JCS (RFC 8785) — sufficient for the ASCII/string proof input.
+    function jcs(v){
+      if(v===null||typeof v!=='object')return JSON.stringify(v);
+      if(Array.isArray(v))return '['+v.map(jcs).join(',')+']';
+      const ks=Object.keys(v).filter(k=>v[k]!==undefined).sort();
+      return '{'+ks.map(k=>JSON.stringify(k)+':'+jcs(v[k])).join(',')+'}';
+    }
+    function didKeyToPub(did){
+      const m=/^did:key:z(.+)$/.exec(did||'');if(!m)return null;
+      const b=b64urlToBytes(m[1]);
+      if(b[0]!==0xed||b[1]!==0x01)return null; // Ed25519 multicodec
+      return b.slice(2);
+    }
+    async function verifyVp(vp){
+      const vpBody={'@context':vp['@context'],type:vp.type,holder:vp.holder,verifiableCredential:vp.verifiableCredential};
+      const vpHash=await sha256hex(JSON.stringify(vpBody));
+      const p=vp.proof||{};
+      const proofInput={'@context':vp['@context'],type:'Ed25519Signature2020',created:p.created,verificationMethod:p.verificationMethod,proofPurpose:p.proofPurpose,nonce:p.nonce,domain:p.domain,vpHash};
+      const msg=new TextEncoder().encode(jcs(proofInput));
+      let sigOk=false;const pub=didKeyToPub(vp.holder);
+      try{ if(pub&&p.proofValue) sigOk=nacl.sign.detached.verify(msg,b64urlToBytes(p.proofValue),pub); }catch(e){sigOk=false}
+      const nonceOk=!!challengeNonce&&p.nonce===challengeNonce;
+      return {sigOk,nonceOk,resolvable:!!pub};
+    }
+
+    function credType(vc){const t=Array.isArray(vc&&vc.type)?vc.type:[];return t.find(x=>x!=='VerifiableCredential')||'Credencial'}
+    function subjName(vc){const s=(vc&&vc.credentialSubject)||{};return s.nombre||s.name||''}
+    // The VP is untrusted input (a hostile presenter could put markup in cred
+    // fields) — escape everything interpolated into innerHTML.
+    function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+    async function showResult(vp){
+      const v=await verifyVp(vp);
+      const vc=(vp.verifiableCredential||[])[0]||{};
+      const pass=v.sigOk&&v.nonceOk;
+      const name=subjName(vc);
+      $('card').innerHTML=
+        '<div class="result-icon '+(pass?'ok':'bad')+'">'+(pass?'✓':'!')+'</div>'+
+        '<h2>'+(pass?'Presentación verificada':'No verificada')+'</h2>'+
+        '<div class="status">'+esc(credType(vc))+(name?(' · '+esc(name)):'')+'</div>'+
+        '<div class="details">'+
+          '<div class="row"><span class="k">Firma (Ed25519)</span><span class="v"><span class="badge '+(v.sigOk?'b-ok':'b-bad')+'">'+(v.sigOk?'válida':(v.resolvable?'inválida':'DID no resoluble'))+'</span></span></div>'+
+          '<div class="row"><span class="k">Desafío (anti-replay)</span><span class="v"><span class="badge '+(v.nonceOk?'b-ok':'b-bad')+'">'+(v.nonceOk?'coincide':'no coincide')+'</span></span></div>'+
+          '<div class="row"><span class="k">Titular (DID)</span><span class="v">'+esc(vp.holder||'—')+'</span></div>'+
+        '</div>';
+    }
+
+    function connect(){
+      ws=new WebSocket(WS_URL);
+      ws.onopen=()=>setStatus('Conectado. Estableciendo canal cifrado…');
+      ws.onmessage=async (e)=>{
+        let msg;try{msg=JSON.parse(e.data)}catch{return}
+        if(msg.type==='connected'){
+          // Derive shared key from the desktop pubkey in the QR, send ours.
+          const kp=nacl.box.keyPair();
+          sharedKey=nacl.box.before(hexToBytes(DESKTOP_PK_HEX),kp.secretKey);
+          ws.send(JSON.stringify({type:'key-exchange',publicKey:bytesToHex(kp.publicKey)}));
+        } else if(msg.type==='key-exchange-ack'){
+          // Channel ready → send a fresh challenge the desktop must sign over.
+          challengeNonce=(crypto.randomUUID?crypto.randomUUID():bytesToHex(nacl.randomBytes(16)));
+          setStatus('Solicitando presentación firmada…');
+          const payload=JSON.stringify({type:'challenge',nonce:challengeNonce});
+          const nonce=nacl.randomBytes(24);
+          const ct=nacl.secretbox(new TextEncoder().encode(payload),nonce,sharedKey);
+          ws.send(JSON.stringify({type:'encrypted',nonce:bytesToHex(nonce),data:bytesToHex(ct)}));
+        } else if(msg.type==='encrypted'&&sharedKey){
+          const pt=nacl.secretbox.open(hexToBytes(msg.data),hexToBytes(msg.nonce),sharedKey);
+          if(!pt)return;
+          let inner;try{inner=JSON.parse(new TextDecoder().decode(pt))}catch{return}
+          if(inner.type==='presentation') showResult(inner.vp);
+        }
+      };
+      ws.onerror=()=>setStatus('Error de conexión. ¿Misma red WiFi?');
+      ws.onclose=()=>{};
+    }
+    connect();
+  </script>
+</body>
+</html>`
   }
 
   /** Generate the mobile capture HTML page */
