@@ -15,6 +15,10 @@ on:
         description: 'attestto-mesh ref (branch/tag/sha)'
         required: false
         default: 'main'
+      trust_ref:
+        description: 'attestto-trust ref (branch/tag/sha)'
+        required: false
+        default: 'main'
 
 jobs:
   build:
@@ -39,6 +43,18 @@ jobs:
           repository: Attestto-com/attestto-mesh
           ref: ${{ github.event.inputs.mesh_ref || 'main' }}
           path: attestto-mesh
+          token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # attestto-verify depends on @attestto/trust via `link:../attestto-trust`.
+      # Without this sibling on disk the link is a dangling symlink and
+      # `@attestto/trust/{cr,br,ar}` fail to resolve (TS2307) when verify builds.
+      # No build step needed — the country index.js/.d.ts files are committed.
+      - name: Checkout attestto-trust (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: Attestto-com/attestto-trust
+          ref: ${{ github.event.inputs.trust_ref || 'main' }}
+          path: attestto-trust
           token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
