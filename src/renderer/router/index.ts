@@ -32,8 +32,10 @@ const routes = [
     meta: { skipGuards: true },
   },
   {
+    // Inicio — home dashboard (identity summary + onboarding/pending tasks).
     path: '/',
-    redirect: '/settings',
+    name: 'home',
+    component: () => import('@/views/DashboardPage.vue'),
   },
   {
     path: '/identity',
