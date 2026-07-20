@@ -39,6 +39,18 @@ export function registerCaptureIPC(): void {
     return captureServer.createSession()
   })
 
+  ipcMain.handle('capture:create-present-session', async () => {
+    if (!captureServer) {
+      throw new Error('Capture server not started')
+    }
+    return captureServer.createPresentSession()
+  })
+
+  ipcMain.handle('capture:submit-presentation', async (_event, sessionId: string, vp: unknown) => {
+    if (!captureServer) return false
+    return captureServer.submitPresentation(sessionId, vp)
+  })
+
   ipcMain.handle('capture:get-session', async (_event, sessionId: string) => {
     if (!captureServer) return null
     const session = captureServer.getSession(sessionId)

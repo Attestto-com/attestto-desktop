@@ -41,6 +41,9 @@ export interface CaptureSession {
   id: string
   createdAt: number
   expiresAt: number
+  /** 'capture' = phone sends document images (default). 'present' = phone is a
+   *  verifier: it connects, sends a challenge, and receives a signed VP back. */
+  mode?: 'capture' | 'present'
   status: 'waiting' | 'connected' | 'capturing' | 'complete' | 'expired'
   frontImage?: string   // base64 jpeg
   backImage?: string    // base64 jpeg
@@ -64,6 +67,13 @@ export type CaptureEvent =
   | { type: 'selfie-captured'; sessionId: string; image: string; livenessResult?: LivenessResult }
   | { type: 'capture-complete'; sessionId: string }
   | { type: 'session-expired'; sessionId: string }
+  // ── Presentation (mode: 'present') ──
+  // The phone (verifier) connected and sent a challenge; the desktop must build
+  // a VP bound to `nonce` and submit it via submitPresentation(). `domain` is
+  // the verifier's identity/origin, if it sent one.
+  | { type: 'present-connected'; sessionId: string }
+  | { type: 'present-challenge'; sessionId: string; nonce: string; domain?: string }
+  | { type: 'present-complete'; sessionId: string }
 
 const SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -161,9 +171,70 @@ export class CaptureServer {
     return { sessionId, url }
   }
 
+  /**
+   * Create a PRESENTATION session. The desktop is the holder: it shows the
+   * returned QR, the phone (verifier) scans it and connects, sends a challenge,
+   * and the desktop replies with a VP signed over that challenge. The QR carries
+   * ONLY the connection engagement (LAN address + ephemeral pubkey + session id)
+   * — never the credential. Anti-replay comes from the phone's per-connection
+   * nonce; confidentiality from the same nacl box E2E as the capture flow.
+   */
+  createPresentSession(): { sessionId: string; url: string } {
+    const sessionId = randomUUID().substring(0, 8)
+    const localIP = this.getLocalIP()
+    const keyPair = nacl.box.keyPair()
+
+    const session: CaptureSession = {
+      id: sessionId,
+      mode: 'present',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + SESSION_TTL_MS,
+      status: 'waiting',
+      keyPair,
+    }
+    this.sessions.set(sessionId, session)
+
+    const pubKeyHex = Buffer.from(keyPair.publicKey).toString('hex')
+    // attestto-present:// engagement — the mobile app derives the ws URL
+    // (ws://{ip}:{port}/ws/{sessionId}) and reads the desktop pubkey from ?pk=.
+    const url = `attestto-present://${localIP}:${this.port}/${sessionId}?pk=${pubKeyHex}`
+    return { sessionId, url }
+  }
+
+  /**
+   * Submit the holder's signed VP for a present session. Called by the renderer
+   * after it builds the VP over the phone's challenge nonce; the server relays
+   * it to the phone over the (encrypted) ws channel and completes the session.
+   */
+  submitPresentation(sessionId: string, vp: unknown): boolean {
+    const session = this.sessions.get(sessionId)
+    if (!session || session.mode !== 'present' || !session.ws) return false
+    this.sendToPhone(session, { type: 'presentation', vp })
+    session.status = 'complete'
+    this.emit({ type: 'present-complete', sessionId })
+    return true
+  }
+
   /** Get session status */
   getSession(sessionId: string): CaptureSession | undefined {
     return this.sessions.get(sessionId)
+  }
+
+  /** Send a message to the phone, E2E-sealed when a shared key exists. */
+  private sendToPhone(session: CaptureSession, payload: Record<string, unknown>): void {
+    if (!session.ws) return
+    if (session.sharedKey) {
+      const plaintext = new TextEncoder().encode(JSON.stringify(payload))
+      const nonce = nacl.randomBytes(24)
+      const ciphertext = nacl.secretbox(plaintext, nonce, session.sharedKey)
+      session.ws.send(JSON.stringify({
+        type: 'encrypted',
+        nonce: Buffer.from(nonce).toString('hex'),
+        data: Buffer.from(ciphertext).toString('hex'),
+      }))
+    } else {
+      session.ws.send(JSON.stringify(payload))
+    }
   }
 
   /** Get the local network IP */
@@ -240,7 +311,11 @@ export class CaptureServer {
 
     session.status = 'connected'
     session.ws = ws
-    this.emit({ type: 'phone-connected', sessionId })
+    this.emit(
+      session.mode === 'present'
+        ? { type: 'present-connected', sessionId }
+        : { type: 'phone-connected', sessionId },
+    )
 
     ws.on('message', (data) => {
       try {
@@ -296,6 +371,15 @@ export class CaptureServer {
   private handleMessage(sessionId: string, msg: any): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
+
+    // ── Presentation mode: the phone (verifier) sends a challenge; the desktop
+    // builds the VP in the renderer and calls submitPresentation(). ──
+    if (session.mode === 'present') {
+      if (msg.type === 'challenge' && typeof msg.nonce === 'string') {
+        this.emit({ type: 'present-challenge', sessionId, nonce: msg.nonce, domain: msg.domain })
+      }
+      return
+    }
 
     switch (msg.type) {
       case 'front-captured':

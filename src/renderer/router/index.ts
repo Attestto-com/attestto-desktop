@@ -56,9 +56,17 @@ const routes = [
     component: () => import('@/views/CredentialsPage.vue'),
   },
   {
+    // Reader: desktop scans a verifier's QR (verifier-initiated / OID4VP).
     path: '/present',
     name: 'present',
     component: () => import('@/views/PresentPage.vue'),
+  },
+  {
+    // Presenter: desktop SHOWS a QR the mobile scans (holder-initiated,
+    // challenge-response over the LAN nacl channel). See ATT-1045.
+    path: '/present-qr',
+    name: 'present-qr',
+    component: () => import('@/views/PresentQrPage.vue'),
   },
   {
     path: '/session',

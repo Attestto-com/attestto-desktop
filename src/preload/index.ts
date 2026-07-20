@@ -151,6 +151,9 @@ contextBridge.exposeInMainWorld('presenciaAPI', {
   capture: {
     startServer: () => ipcRenderer.invoke('capture:start-server'),
     createSession: () => ipcRenderer.invoke('capture:create-session'),
+    createPresentSession: () => ipcRenderer.invoke('capture:create-present-session'),
+    submitPresentation: (sessionId: string, vp: unknown) =>
+      ipcRenderer.invoke('capture:submit-presentation', sessionId, vp),
     getSession: (sessionId: string) => ipcRenderer.invoke('capture:get-session', sessionId),
     stopServer: () => ipcRenderer.invoke('capture:stop-server'),
     onEvent: (cb: (event: unknown) => void): (() => void) => {

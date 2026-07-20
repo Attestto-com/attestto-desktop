@@ -390,7 +390,7 @@ const sortedCredentials = computed(() =>
               label="Presentar"
               size="sm"
               color="accent"
-              @click.stop="router.push('/present')"
+              @click.stop="router.push({ name: 'present-qr', query: { cid: c.id } })"
             />
             <q-btn
               flat
@@ -443,9 +443,9 @@ const sortedCredentials = computed(() =>
       <div class="info-banner q-mt-md">
         <q-icon name="lock" size="16px" color="grey-6" />
         <span class="att-text-muted" style="font-size: var(--att-text-xs);">
-          Las credenciales se almacenan cifradas en tu dispositivo. Para presentar, escanea el QR del
-          verificador: la presentación se firma contra su desafío (challenge). El verificador nunca
-          recibe un JSON crudo ni la credencial dentro de un QR.
+          Las credenciales se almacenan cifradas en tu dispositivo. «Presentar» muestra un QR que la
+          app móvil escanea; «Escanear QR de verificador» lee el QR de un verificador. En ambos casos
+          la presentación se firma contra un desafío (challenge) — el QR nunca contiene la credencial.
         </span>
       </div>
     </div>
