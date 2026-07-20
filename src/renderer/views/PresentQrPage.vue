@@ -1,21 +1,23 @@
 <script setup lang="ts">
-// Holder-side presentation: the DESKTOP shows a QR that the MOBILE app scans.
-// The QR carries only a connection engagement (attestto-present://…), never the
-// credential. The phone connects over the LAN nacl channel (reused capture
-// server), sends a challenge nonce, and the desktop replies with a VP signed
-// over that nonce. Replay-safe: the VP is bound to the phone's per-connection
-// challenge. See ATT-1044 / ATT-1045.
+// Holder-side presentation over the RELAY. The desktop is the holder: it shows a
+// QR pointing at the hosted verifier page (mobile.attestto.com/present.html). The
+// phone opens that over HTTPS (no iOS ws-to-LAN wall) and both peers rendezvous
+// through a blind relay. The QR carries only the connection engagement
+// (relay + session id + ephemeral pubkey) — never the credential. The desktop
+// answers the phone's challenge with a VP signed over its nonce (replay-safe).
+// Everything is nacl-sealed E2E to the pubkey in the QR, so the relay sees only
+// ciphertext. See ATT-1044 / ATT-1045.
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QRCode from 'qrcode'
+import nacl from 'tweetnacl'
 import { usePresentation } from '../composables/usePresentation'
 import type { VaultCredential } from '../../shared/vault-api'
 
-type PresentEvent =
-  | { type: 'present-connected'; sessionId: string }
-  | { type: 'present-challenge'; sessionId: string; nonce: string; domain?: string }
-  | { type: 'present-complete'; sessionId: string }
-  | { type: string; sessionId?: string }
+// Provider-independent later via relay.attestto.com (ATT-1047 CNAME flip); the
+// working Fly URL is the default so this runs today without extra DNS.
+const RELAY_WSS = 'wss://attestto-present-relay.fly.dev'
+const VERIFY_PAGE = 'https://mobile.attestto.com/present.html'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,10 +29,20 @@ const qrDataUrl = ref('')
 const errorMsg = ref('')
 const credential = ref<VaultCredential | null>(null)
 
-let sessionId = ''
-let unsubscribe: (() => void) | null = null
+let ws: WebSocket | null = null
+let keyPair: nacl.BoxKeyPair | null = null
+let sharedKey: Uint8Array | null = null
 
 const api = () => (window as unknown as { presenciaAPI?: any }).presenciaAPI
+
+function hexToBytes(h: string): Uint8Array {
+  const a = new Uint8Array(h.length / 2)
+  for (let i = 0; i < h.length; i += 2) a[i / 2] = parseInt(h.substr(i, 2), 16)
+  return a
+}
+function bytesToHex(b: Uint8Array): string {
+  return Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('')
+}
 
 async function loadCredential(): Promise<VaultCredential | null> {
   const cid = route.query.cid as string | undefined
@@ -41,64 +53,69 @@ async function loadCredential(): Promise<VaultCredential | null> {
     const found = list.find((c) => (c as { id?: string }).id === cid)
     if (found) return found
   }
-  return list[0] // fallback: first credential
+  return list[0]
 }
 
-async function handleEvent(ev: PresentEvent) {
-  if (ev.sessionId && ev.sessionId !== sessionId) return
-  if (ev.type === 'present-connected') {
+function sendEncrypted(obj: unknown) {
+  if (!ws || !sharedKey) return
+  const nonce = nacl.randomBytes(24)
+  const ct = nacl.secretbox(new TextEncoder().encode(JSON.stringify(obj)), nonce, sharedKey)
+  ws.send(JSON.stringify({ type: 'encrypted', nonce: bytesToHex(nonce), data: bytesToHex(ct) }))
+}
+
+async function handleMessage(raw: string) {
+  let msg: any
+  try { msg = JSON.parse(raw) } catch { return }
+
+  if (msg.type === 'peer-joined') {
     step.value = 'connected'
-  } else if (ev.type === 'present-challenge') {
-    step.value = 'signing'
-    const cred = credential.value
-    if (!cred) {
-      errorMsg.value = 'No hay credencial para presentar'
-      step.value = 'error'
-      return
+  } else if (msg.type === 'key-exchange' && typeof msg.publicKey === 'string') {
+    // Phone announced itself → derive the shared key and ack.
+    sharedKey = nacl.box.before(hexToBytes(msg.publicKey), keyPair!.secretKey)
+    ws?.send(JSON.stringify({ type: 'key-exchange-ack' }))
+  } else if (msg.type === 'encrypted' && sharedKey) {
+    const pt = nacl.secretbox.open(hexToBytes(msg.data), hexToBytes(msg.nonce), sharedKey)
+    if (!pt) return
+    let inner: any
+    try { inner = JSON.parse(new TextDecoder().decode(pt)) } catch { return }
+    if (inner.type === 'challenge' && typeof inner.nonce === 'string') {
+      step.value = 'signing'
+      const cred = credential.value
+      if (!cred) { errorMsg.value = 'No hay credencial para presentar'; step.value = 'error'; return }
+      const vp = await buildSignedPresentation({ credential: cred, nonce: inner.nonce })
+      if (!vp) { errorMsg.value = 'No se pudo firmar la presentación'; step.value = 'error'; return }
+      sendEncrypted({ type: 'presentation', vp })
+      step.value = 'done'
     }
-    const vp = await buildSignedPresentation({
-      credential: cred,
-      nonce: (ev as { nonce: string }).nonce,
-      domain: (ev as { domain?: string }).domain,
-    })
-    if (!vp) {
-      errorMsg.value = 'No se pudo firmar la presentación'
-      step.value = 'error'
-      return
-    }
-    await api()?.capture?.submitPresentation(sessionId, vp)
-  } else if (ev.type === 'present-complete') {
-    step.value = 'done'
+  } else if (msg.type === 'peer-gone') {
+    if (step.value !== 'done') step.value = 'waiting'
   }
 }
 
 onMounted(async () => {
   try {
     credential.value = await loadCredential()
-    if (!credential.value) {
-      errorMsg.value = 'No hay credenciales en la bóveda'
-      step.value = 'error'
-      return
-    }
-    unsubscribe = api()?.capture?.onEvent(handleEvent) ?? null
-    await api()?.capture?.startServer()
-    const session = await api()?.capture?.createPresentSession()
-    sessionId = session.sessionId
-    qrDataUrl.value = await QRCode.toDataURL(session.url, { width: 300, margin: 2 })
-    step.value = 'waiting'
+    if (!credential.value) { errorMsg.value = 'No hay credenciales en la bóveda'; step.value = 'error'; return }
+
+    keyPair = nacl.box.keyPair()
+    const sid = (globalThis.crypto.randomUUID?.() || bytesToHex(nacl.randomBytes(8))).replace(/-/g, '').slice(0, 16)
+    const pkHex = bytesToHex(keyPair.publicKey)
+    const url = `${VERIFY_PAGE}?relay=${encodeURIComponent(RELAY_WSS)}&sid=${sid}&pk=${pkHex}`
+    qrDataUrl.value = await QRCode.toDataURL(url, { width: 300, margin: 2 })
+
+    ws = new WebSocket(`${RELAY_WSS}/r/${sid}`)
+    ws.onopen = () => { step.value = 'waiting' }
+    ws.onmessage = (e) => handleMessage(String(e.data))
+    ws.onerror = () => { if (step.value === 'starting') { errorMsg.value = 'No se pudo conectar al relay'; step.value = 'error' } }
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : 'Error al iniciar la presentación'
     step.value = 'error'
   }
 })
 
-onBeforeUnmount(() => {
-  unsubscribe?.()
-})
+onBeforeUnmount(() => { ws?.close() })
 
-function goBack() {
-  router.back()
-}
+function goBack() { router.back() }
 </script>
 
 <template>
@@ -110,22 +127,19 @@ function goBack() {
 
     <div class="column items-center q-gutter-md" style="max-width: 460px; margin: 0 auto;">
       <p class="text-grey text-center">
-        Mostrá este código al verificador. Escaneálo con la app móvil de Attestto
+        Mostrá este código al verificador. Escaneálo con la cámara del teléfono
         para recibir tu presentación firmada.
       </p>
 
-      <!-- Starting -->
       <div v-if="step === 'starting'" class="column items-center q-gutter-sm q-pa-lg">
         <q-spinner size="40px" color="primary" />
-        <span class="text-grey">Iniciando sesión de presentación...</span>
+        <span class="text-grey">Iniciando sesión de presentación…</span>
       </div>
 
-      <!-- Error -->
       <div v-else-if="step === 'error'" class="text-negative text-center q-pa-lg">
         {{ errorMsg }}
       </div>
 
-      <!-- Done -->
       <div v-else-if="step === 'done'" class="column items-center q-gutter-sm q-pa-lg">
         <q-icon name="check_circle" color="positive" size="56px" />
         <div class="text-h6">Presentación enviada</div>
@@ -135,7 +149,6 @@ function goBack() {
         <q-btn unelevated color="primary" label="Listo" @click="goBack" />
       </div>
 
-      <!-- QR + live status -->
       <template v-else>
         <img
           v-if="qrDataUrl"
@@ -149,20 +162,19 @@ function goBack() {
           dense
           class="bg-primary text-white rounded-borders"
         >
-          <template #avatar>
-            <q-spinner size="20px" />
-          </template>
-          {{ step === 'connected' ? 'Teléfono conectado — esperando desafío...' : 'Firmando presentación...' }}
+          <template #avatar><q-spinner size="20px" /></template>
+          {{ step === 'connected' ? 'Teléfono conectado — esperando desafío…' : 'Firmando presentación…' }}
         </q-banner>
         <div v-else class="text-caption text-grey text-center">
-          Esperando que el verificador escanee...
+          Esperando que el verificador escanee…
         </div>
 
         <div class="info-banner q-mt-sm">
           <q-icon name="lock" size="16px" color="grey-6" />
           <span class="att-text-muted" style="font-size: var(--att-text-xs);">
-            El QR solo contiene la conexión (clave efímera + dirección local), nunca la
-            credencial. La presentación se firma contra el desafío del verificador.
+            El QR solo contiene la conexión (clave efímera + relay), nunca la credencial.
+            La presentación se firma contra el desafío del verificador y viaja cifrada de
+            extremo a extremo.
           </span>
         </div>
       </template>
