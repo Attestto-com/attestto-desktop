@@ -80,6 +80,10 @@ dials `mesh.attestto.net`. Three isolation mechanisms make runs deterministic:
   yield `{ app, page, errors }`; on teardown close the app and rm the temp
   dir. A shared `expectNoRendererErrors(errors)` helper asserts the collector
   is empty.
+- **`e2e/pages/*.ts`** — Page Object Model: `AppShell` (nav + router push),
+  `UnlockPage` (create/unlock vault), and a data-driven `view-matrix.ts`
+  listing each core view's `data-testid` root. Specs call these; selectors
+  live only here.
 - **`e2e/smoke.spec.ts`** — launches via fixture; asserts the window title /
   root element is present; evaluates `window.presenciaAPI?.isElectron === true`
   in the renderer; asserts `errors` is empty after settle.
@@ -95,12 +99,34 @@ dials `mesh.attestto.net`. Three isolation mechanisms make runs deterministic:
   `@playwright/test`. Existing `"test": "vitest run"` is unchanged; E2E stays a
   separate command so the fast unit suite is not slowed.
 
+### Decoupling tests from the UX (required)
+
+The UX is actively changing — a CORTEX-navy reskin and a new sign-in screen
+are planned — so specs MUST NOT couple to current markup, text, or styling.
+Two layers enforce this:
+
+1. **Stable `data-testid` anchors.** Every element a test touches gets a
+   semantic `data-testid` (e.g. `vault-password-input`, `vault-unlock-submit`,
+   `view-identity-root`). Selectors use `getByTestId` only — never CSS class,
+   never visible-text matching, never DOM structure. A restyle or copy change
+   cannot break a test. The desktop renderer is fully local (no remote CORTEX
+   webview), so every anchor is under our control.
+2. **Page Object Model.** `e2e/pages/*.ts` wrap each view behind semantic
+   actions (`UnlockPage.createVault(pw)`, `AppShell.goto('identity')`,
+   `ViewPage.assertLoaded()`). Specs call page objects; they never see a
+   selector. When the UX changes, only the page object and the view's
+   `data-testid`s update — spec files stay untouched.
+
+Adding a new view later = add its `data-testid` root + one row in the view
+matrix (`e2e/pages/view-matrix.ts`), not a new bespoke spec. This is how the
+harness absorbs "different UX" without churn.
+
 ### Data flow
 
-Playwright drives the actual rendered Quasar DOM using role/text selectors
-(and adds `data-testid` anchors only where text is ambiguous). Assertions read
-real rendered state — this is a true UX exercise, not a mock. The vault
-password is a test constant; it protects an ephemeral throwaway vault.
+Playwright drives the actual rendered Quasar DOM through the Page Object layer
+using `data-testid` anchors exclusively. Assertions read real rendered state —
+this is a true UX exercise, not a mock. The vault password is a test constant;
+it protects an ephemeral throwaway vault.
 
 ### Error handling
 
