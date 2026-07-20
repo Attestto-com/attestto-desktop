@@ -13,7 +13,11 @@ test('app boots: window mounts and the presenciaAPI bridge is live', async ({
   )
   expect(isElectron).toBe(true)
 
-  // Let the renderer settle, then assert no uncaught renderer errors occurred.
-  await page.waitForTimeout(1500)
+  // Deterministic settle: on a fresh user-data dir the router guard lands on
+  // the vault-unlock gate in create mode, so its create button is the first
+  // interactive element the renderer paints. Waiting on it (not an arbitrary
+  // sleep) proves boot + guard + first-view render completed before we assert
+  // no uncaught renderer errors occurred.
+  await expect(page.getByTestId('vault-create-btn')).toBeVisible()
   expect(errors).toEqual([])
 })
