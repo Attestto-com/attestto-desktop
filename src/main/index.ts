@@ -177,23 +177,27 @@ app.whenReady().then(async () => {
       initCoreUpdater(mainWindow)
     }
 
-    // Start mesh node
-    try {
-      const bootstrapPeers = (process.env.MESH_BOOTSTRAP_PEERS ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
-      await meshService.start(bootstrapPeers.length > 0 ? { bootstrapPeers } : undefined)
-      const node = meshService.getNode()
-      console.log('[mesh] Node started —', node.peerId)
-      console.log('[mesh] Effective bootstrap peers:', (node as any).config?.bootstrapPeers ?? '(unknown)')
-      node.on('mesh:event', (evt: any) => {
-        if (evt.type?.startsWith('peer:') || evt.type === 'dht:ready') {
-          console.log('[mesh:event]', JSON.stringify(evt))
-        }
-      })
-    } catch (err) {
-      console.error('[mesh] Failed to start:', err)
+    // Start mesh node (skipped under E2E for deterministic offline runs)
+    if (process.env.ATTESTTO_E2E === '1') {
+      console.log('[mesh] Skipped (ATTESTTO_E2E=1)')
+    } else {
+      try {
+        const bootstrapPeers = (process.env.MESH_BOOTSTRAP_PEERS ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+        await meshService.start(bootstrapPeers.length > 0 ? { bootstrapPeers } : undefined)
+        const node = meshService.getNode()
+        console.log('[mesh] Node started —', node.peerId)
+        console.log('[mesh] Effective bootstrap peers:', (node as any).config?.bootstrapPeers ?? '(unknown)')
+        node.on('mesh:event', (evt: any) => {
+          if (evt.type?.startsWith('peer:') || evt.type === 'dht:ready') {
+            console.log('[mesh:event]', JSON.stringify(evt))
+          }
+        })
+      } catch (err) {
+        console.error('[mesh] Failed to start:', err)
+      }
     }
   }
 
