@@ -155,7 +155,7 @@ app.whenReady().then(async () => {
     registerVaultIPC(mainWindow)
     registerGuardianIPC()
     registerPadronIPC()
-    registerCaptureIPC(mainWindow)
+    registerCaptureIPC()
     registerFirmaIPC()
     registerPdfIPC(mainWindow)
     registerExamIPC(mainWindow)
