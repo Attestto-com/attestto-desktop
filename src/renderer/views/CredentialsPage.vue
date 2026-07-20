@@ -395,6 +395,15 @@ const sortedCredentials = computed(() =>
             <q-btn
               flat
               dense
+              icon="ios_share"
+              label="Exportar"
+              size="sm"
+              color="accent"
+              @click.stop="router.push({ name: 'export-qr', query: { cid: c.id } })"
+            />
+            <q-btn
+              flat
+              dense
               icon="open_in_new"
               label="Verificar en navegador"
               size="sm"

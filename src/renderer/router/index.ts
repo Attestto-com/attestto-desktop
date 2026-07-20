@@ -69,6 +69,13 @@ const routes = [
     component: () => import('@/views/PresentQrPage.vue'),
   },
   {
+    // Export: desktop re-issues the credential to another device's did:key over
+    // the relay (phone / extension become holders). See useCredentialExport.
+    path: '/export-qr',
+    name: 'export-qr',
+    component: () => import('@/views/ExportQrPage.vue'),
+  },
+  {
     path: '/session',
     name: 'session',
     component: () => import('@/views/SessionPage.vue'),
