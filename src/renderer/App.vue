@@ -57,6 +57,10 @@ const ROUTE_CRUMBS: Record<string, Crumb[]> = {
 }
 const crumbs = computed<Crumb[]>(() => ROUTE_CRUMBS[route.path] ?? [])
 
+// The unlock screen is self-contained (own brand + actions): hide the nav
+// chrome so it reads as a focused entry point.
+const isUnlockScreen = computed(() => route.name === 'unlock')
+
 const currentTab = computed(() => {
   const path = route.path
   const match = persona.activeSectorTabs.find(s => s.route === path)
@@ -93,7 +97,7 @@ function toggleTheme() {
     <div class="titlebar-drag" />
 
     <!-- Main header — single row: tabs left, controls + identity right -->
-    <q-header class="app-header">
+    <q-header v-if="!isUnlockScreen" class="app-header">
       <div class="header-content">
         <!-- Sector tabs — only when vault is unlocked -->
         <div class="header-left">
@@ -311,12 +315,12 @@ function toggleTheme() {
     <q-footer class="app-footer">
       <div class="footer-content">
         <div class="footer-left">
-          <a class="footer-brand" href="https://attestto.org/ark" target="_blank">
+          <a class="footer-brand" href="https://attestto.org" target="_blank">
             <span class="footer-brand__mark">tt</span>
-            <span>Powered by Attestto Open Ark</span>
+            <span>Attestto</span>
           </a>
         </div>
-        <div class="footer-right">
+        <div v-if="!isUnlockScreen" class="footer-right">
           <q-icon name="lock" size="11px" :color="vault.isUnlocked ? 'positive' : 'grey-6'" />
           <span>{{ vault.isUnlocked ? 'Segura' : 'Bloqueada' }}</span>
           <span class="footer-separator">|</span>
