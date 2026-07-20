@@ -156,7 +156,7 @@ const profileComplete = computed(() => profileItems.value.every(i => i.done))
 </script>
 
 <template>
-  <q-page class="settings-page">
+  <q-page class="settings-page" data-testid="view-settings-root">
     <!-- Onboarding journey — only when profile incomplete -->
     <JourneySteps v-if="!profileComplete" class="q-mb-lg" />
 

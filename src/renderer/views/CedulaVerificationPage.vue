@@ -1278,7 +1278,7 @@ function goBack() {
 </script>
 
 <template>
-  <q-page class="page-centered">
+  <q-page class="page-centered" data-testid="view-cedula-root">
     <div class="page-centered__container cedula-page">
 
       <!-- Header -->

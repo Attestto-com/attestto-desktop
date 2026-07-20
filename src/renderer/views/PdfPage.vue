@@ -454,6 +454,7 @@ onBeforeUnmount(() => {
 
 <template>
   <q-page
+    data-testid="view-pdf-root"
     class="pdf-page"
     @dragover="onDragOver"
     @dragleave="onDragLeave"

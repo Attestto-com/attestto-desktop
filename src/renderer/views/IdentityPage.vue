@@ -530,7 +530,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <q-page class="page-centered">
+  <q-page class="page-centered" data-testid="view-identity-root">
     <div class="page-centered__container" style="max-width: 700px;">
       <div class="text-h5 text-weight-bold q-mb-xs att-text-title">Verificacion de identidad</div>
       <div class="att-text-muted q-mb-lg" style="font-size: var(--att-text-sm);">
