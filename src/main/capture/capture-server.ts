@@ -1,32 +1,35 @@
-// ── Local Capture Server (HTTPS) ──
-// Runs an HTTPS + WSS server on the local network so a phone
-// on the same WiFi can use getUserMedia for live camera capture.
+// ── Local Capture Server (HTTP + app-layer E2E) ──
+// Runs an HTTP + WS server on the local network so a phone on the same WiFi
+// can capture identity documents and a selfie.
 //
-// HTTPS is required because mobile browsers block getUserMedia on
-// non-secure origins. We generate a self-signed cert at startup
-// using the `selfsigned` package. The phone will see a cert warning
-// once — after accepting, the live camera viewfinder works.
+// Why HTTP, not HTTPS: a LAN-IP host can only carry a self-signed cert, which
+// mobile Safari rejects for the wss:// upgrade (and getUserMedia can't run in
+// that context anyway), producing the "Not Secure" + "Error de conexion"
+// dead end. Confidentiality does NOT rely on TLS here — see Security below.
+// (The durable fix, a real-cert PWA at mobile.attestto.com streaming over the
+// mesh, is tracked separately; this HTTP path is the working interim.)
 //
 // Flow:
-// 1. Desktop generates self-signed cert + starts HTTPS server
-// 2. QR code shown: https://{local-ip}:{port}/capture/{session-id}
-// 3. Phone scans QR → accepts cert → opens mobile capture page
-// 4. Phone captures front + back (rear cam) + selfie (front cam with liveness)
-// 5. Images + liveness data sent over WSS → desktop receives
-// 6. Phone prompted to install PWA wallet
+// 1. Desktop starts the HTTP server and mints an ephemeral nacl box keypair.
+// 2. QR shown: http://{local-ip}:{port}/capture/{session-id}?pk={desktop-pub}
+// 3. Phone scans QR → opens the capture page (no cert warning).
+// 4. Phone captures front + back + selfie via the native camera (file input;
+//    getUserMedia is unavailable over HTTP, so the page falls back to it).
+// 5. Frames are sent over ws:// but sealed end-to-end (see Security).
 //
-// Security: session IDs are single-use, expire after 5 minutes,
-// and the phone must be on the same local network.
-// The self-signed cert is DID-bound — its Subject includes the
-// user's did:key, making it verifiable without a CA.
+// Security: the phone derives an nacl ECDH shared key against the desktop
+// public key it read from the QR (?pk=), so every frame is secretbox-sealed
+// to the desktop — a network observer sees only ciphertext and a MITM cannot
+// derive the key without the desktop secret. Trust is rooted in the QR the
+// user physically scanned on the desktop (the self-certifying did:key idea,
+// moved from the TLS layer to the app layer). Session IDs are single-use and
+// expire after 5 minutes; the phone must be on the same local network.
 
-import { createServer as createHttpsServer } from 'node:https'
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createServer as createHttpServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http'
 import { WebSocketServer, WebSocket } from 'ws'
 import { networkInterfaces } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import nacl from 'tweetnacl'
-import { generate as generateSelfSigned } from 'selfsigned'
 
 export interface LivenessResult {
   faceDetected: boolean
@@ -65,7 +68,7 @@ export type CaptureEvent =
 const SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
 export class CaptureServer {
-  private httpServer: ReturnType<typeof createHttpsServer> | null = null
+  private httpServer: Server | null = null
   private wss: WebSocketServer | null = null
   private sessions = new Map<string, CaptureSession>()
   private port = 0
@@ -73,46 +76,24 @@ export class CaptureServer {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null
   private userDid: string | null = null
 
-  /**
-   * Generate a self-signed cert at startup. The cert Subject embeds the
-   * user's DID (when present) so the phone can later pin trust against the
-   * same DID it sees in the QR code, without needing a CA. Cert is ephemeral
-   * (1-day validity, rotated on every server start) and unique per session.
-   */
-  private async generateCert(did: string | null): Promise<{ key: string; cert: string }> {
-    const localIP = this.getLocalIP()
-    const cn = did ? `did:${did.replace(/^did:/, '')}` : 'attestto-capture'
-    const notBeforeDate = new Date()
-    const notAfterDate = new Date(notBeforeDate.getTime() + 24 * 60 * 60 * 1000)
-    const pems = await generateSelfSigned([{ name: 'commonName', value: cn }], {
-      keySize: 2048,
-      algorithm: 'sha256',
-      notBeforeDate,
-      notAfterDate,
-      extensions: [
-        {
-          name: 'subjectAltName',
-          altNames: [
-            { type: 2, value: 'localhost' },
-            { type: 7, ip: '127.0.0.1' },
-            { type: 7, ip: localIP },
-          ],
-        },
-      ],
-    })
-    return { key: pems.private, cert: pems.cert }
-  }
+  // Transport note: this server runs over plain HTTP, not HTTPS. A LAN-IP
+  // server can only hold a self-signed cert, which mobile Safari rejects for
+  // the wss:// upgrade (and camera getUserMedia can't run in that context
+  // anyway). Confidentiality does NOT depend on TLS here: the phone derives an
+  // nacl ECDH shared key against the desktop public key carried in the QR
+  // (?pk=), so every frame is secretbox-sealed to the desktop end-to-end. A
+  // network attacker sees only ciphertext; MITM cannot derive the key without
+  // the desktop secret. Over HTTP the phone falls back to native-camera file
+  // input (getUserMedia is unavailable), which needs no secure context.
 
   /** Start the capture server on a random available port */
   async start(did?: string): Promise<number> {
     this.userDid = did || null
-    console.log(`[capture] Starting HTTPS server (DID: ${did || 'anonymous'})`)
-
-    const { key, cert } = await this.generateCert(this.userDid)
+    console.log(`[capture] Starting HTTP server (DID: ${did || 'anonymous'})`)
 
     return new Promise((resolve, reject) => {
       const handler = (req: IncomingMessage, res: ServerResponse) => this.handleHTTP(req, res)
-      this.httpServer = createHttpsServer({ key, cert }, handler)
+      this.httpServer = createHttpServer(handler)
 
       this.wss = new WebSocketServer({ server: this.httpServer })
       this.wss.on('connection', (ws, req) => this.handleWS(ws, req))
@@ -121,7 +102,7 @@ export class CaptureServer {
         const addr = this.httpServer!.address()
         if (addr && typeof addr === 'object') {
           this.port = addr.port
-          console.log(`[capture] HTTPS server started on port ${this.port}`)
+          console.log(`[capture] HTTP server started on port ${this.port}`)
 
           // Clean up expired sessions every 30s
           this.cleanupInterval = setInterval(() => this.cleanupExpired(), 30_000)
@@ -173,7 +154,7 @@ export class CaptureServer {
 
     // Embed public key in URL so phone can encrypt from first message
     const pubKeyHex = Buffer.from(keyPair.publicKey).toString('hex')
-    const url = `https://${localIP}:${this.port}/capture/${sessionId}?pk=${pubKeyHex}`
+    const url = `http://${localIP}:${this.port}/capture/${sessionId}?pk=${pubKeyHex}`
 
     this.emit({ type: 'session-created', sessionId, url })
 
@@ -204,7 +185,7 @@ export class CaptureServer {
 
     // ATT-275: restrict CORS to the capture page origin (same server)
     const localIP = this.getLocalIP()
-    const allowedOrigin = `https://${localIP}:${this.port}`
+    const allowedOrigin = `http://${localIP}:${this.port}`
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -372,6 +353,9 @@ export class CaptureServer {
 
   /** Generate the mobile capture HTML page */
   private getMobileCaptureHTML(sessionId: string): string {
+    // Plain ws:// — the page is served over http, so this is same-security
+    // (no mixed content) and needs no cert. Frame contents are still E2E
+    // encrypted at the app layer (nacl box sealed to the QR ?pk=).
     const wsUrl = `ws://${this.getLocalIP()}:${this.port}/ws/${sessionId}`
 
     return `<!DOCTYPE html>
