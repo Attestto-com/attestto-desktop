@@ -193,6 +193,10 @@ export function useOid4vp() {
       const signatureBytes: Uint8Array = await api.vault.sign(proofBytes)
       const proofValue = uint8ToBase64url(signatureBytes)
 
+      // `vpBody.verifiableCredential` holds VaultCredential[] (the vault's stored
+      // shape); the vc-sdk VerifiablePresentation types it as VerifiableCredential[].
+      // At runtime a VaultCredential IS the credential JSON, so bridge the two
+      // types across this wire-envelope boundary via `unknown` (per TS2352).
       const vp: VerifiablePresentation = {
         ...vpBody,
         proof: {
@@ -204,7 +208,7 @@ export function useOid4vp() {
           nonce,
           domain: request.client_id,
         },
-      } as VerifiablePresentation
+      } as unknown as VerifiablePresentation
 
       resultVp.value = vp
 

@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **[ATT-307]** Desktop ID verification flow — webcam face capture with liveness detection.
 - **[ATT-346]** W3C VC shape rendering in CredentialsPage with trust badges and labels.
 
+### Fixed
+- Type-check failure in `useOid4vp.ts` — the OID4VP presentation envelope now bridges the vault's `VaultCredential[]` to the vc-sdk `VerifiablePresentation` type across the wire boundary via `unknown` (per TS2352). `pnpm type-check` is green again.
+
 ## [0.1.0] - 2026-04-10
 
 ### Added
