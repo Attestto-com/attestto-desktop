@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Dark } from 'quasar'
 import { usePersonaStore } from './stores/persona'
 import { useMeshStore } from './stores/mesh'
 import { useVaultStore } from './stores/vault'
+// Real brand asset — the violet "tt" logo. Never hand-roll this as text/SVG.
+import brandLogo from '../../resources/icon.png'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,6 +63,57 @@ const crumbs = computed<Crumb[]>(() => ROUTE_CRUMBS[route.path] ?? [])
 // chrome so it reads as a focused entry point.
 const isUnlockScreen = computed(() => route.name === 'unlock')
 
+// ── Left sidebar (CORTEX-style) ──
+// Rail/expanded collapse via Quasar's mini mode. Persisted across sessions.
+const sidebarMini = ref(localStorage.getItem('att.sidebarMini') === '1')
+function toggleSidebar() {
+  sidebarMini.value = !sidebarMini.value
+  localStorage.setItem('att.sidebarMini', sidebarMini.value ? '1' : '0')
+}
+
+// Nav grouped into CORTEX-style sections. Sector items are dynamic (driven by
+// installed modules); the account/document items are fixed.
+interface NavItem { label: string; icon: string; route: string; badge?: string }
+interface NavGroup { title?: string; items: NavItem[] }
+const navGroups = computed<NavGroup[]>(() => {
+  const sectors = persona.activeSectorTabs.filter((t) => t.route !== '/')
+  const groups: NavGroup[] = [
+    { items: [{ label: 'Inicio', icon: 'dashboard', route: '/' }] },
+    {
+      title: 'Mi cuenta',
+      items: [
+        { label: 'Mi cuenta', icon: 'manage_accounts', route: '/settings' },
+        { label: 'Verificacion de identidad', icon: 'badge', route: '/identity' },
+        { label: 'Credenciales', icon: 'verified', route: '/credentials' },
+      ],
+    },
+    {
+      title: 'Documentos',
+      items: [
+        {
+          label: vault.identityVerified ? 'Visor + Firmador PDF' : 'Visor de PDF',
+          icon: 'picture_as_pdf',
+          route: '/pdf',
+        },
+      ],
+    },
+  ]
+  if (sectors.length) groups.push({ title: 'Sectores', items: sectors })
+  if (persona.availableModules.length) {
+    groups.push({ items: [{ label: 'Explorar modulos', icon: 'add_circle_outline', route: '/explore' }] })
+  }
+  return groups
+})
+
+function isNavActive(itemRoute: string): boolean {
+  if (itemRoute === '/') return route.path === '/'
+  if (itemRoute === '/settings') {
+    // Mi cuenta stays highlighted for its detail sub-pages
+    return route.path === '/settings'
+  }
+  return route.path === itemRoute || route.path.startsWith(itemRoute + '/')
+}
+
 const currentTab = computed(() => {
   const path = route.path
   const match = persona.activeSectorTabs.find(s => s.route === path)
@@ -92,7 +145,7 @@ function toggleTheme() {
 </script>
 
 <template>
-  <q-layout view="hHh lpr lFf">
+  <q-layout view="lHh LpR lFf">
     <!-- Titlebar drag region (macOS traffic lights) -->
     <div class="titlebar-drag" />
 
@@ -112,34 +165,16 @@ function toggleTheme() {
               <span class="sector-tab__label">Visor PDF</span>
             </button>
           </div>
-          <div v-else class="sector-tabs">
-            <button
-              v-for="tab in persona.activeSectorTabs"
-              :key="tab.route"
-              class="sector-tab"
-              :class="{ 'sector-tab--active': currentTab === tab.route }"
-              @click="navigateTab(tab.route)"
-            >
-              <q-icon :name="tab.icon" size="18px" />
-              <span class="sector-tab__label">{{ tab.label }}</span>
-              <q-badge
-                v-if="tab.badge"
-                color="primary"
-                :label="tab.badge"
-                class="sector-tab__badge"
-              />
-            </button>
-
-            <button
-              v-if="persona.availableModules.length > 0"
-              class="sector-tab sector-tab--more"
-              @click="$router.push('/explore')"
-            >
-              <q-icon name="add_circle_outline" size="18px" />
-              <span class="sector-tab__label">Mas</span>
-              <q-tooltip>Explorar modulos</q-tooltip>
-            </button>
-          </div>
+          <!-- Unlocked: primary nav lives in the left sidebar. Header-left
+               shows a collapse toggle so the rail can be reopened. -->
+          <button
+            v-else
+            class="sector-tab sector-tab--icon"
+            @click="toggleSidebar"
+          >
+            <q-icon name="menu" size="20px" />
+            <q-tooltip>{{ sidebarMini ? 'Expandir menu' : 'Colapsar menu' }}</q-tooltip>
+          </button>
         </div>
 
         <div class="header-right">
@@ -286,6 +321,76 @@ function toggleTheme() {
 
     </q-header>
 
+    <!-- Left sidebar — CORTEX-style, collapsible rail. Only when unlocked. -->
+    <q-drawer
+      v-if="vault.isUnlocked && !isUnlockScreen"
+      :model-value="true"
+      :mini="sidebarMini"
+      :width="248"
+      :mini-width="68"
+      side="left"
+      bordered
+      class="app-sidebar"
+    >
+      <div class="app-sidebar__inner">
+        <!-- Brand -->
+        <button class="app-sidebar__brand" @click="$router.push('/')">
+          <img :src="brandLogo" alt="Attestto" class="app-sidebar__mark" />
+          <span v-if="!sidebarMini" class="app-sidebar__word">
+            Attest<span class="app-sidebar__accent">to</span>
+          </span>
+        </button>
+
+        <!-- Nav -->
+        <q-scroll-area class="app-sidebar__nav">
+          <template v-for="(group, gi) in navGroups" :key="gi">
+            <div v-if="group.title && !sidebarMini" class="app-sidebar__section">
+              {{ group.title }}
+            </div>
+            <q-separator v-else-if="group.title" class="app-sidebar__mini-sep" />
+            <q-item
+              v-for="item in group.items"
+              :key="item.route"
+              clickable
+              v-ripple
+              :active="isNavActive(item.route)"
+              active-class="app-nav-item--active"
+              class="app-nav-item"
+              @click="$router.push(item.route)"
+            >
+              <q-item-section avatar>
+                <q-icon :name="item.icon" size="22px" />
+              </q-item-section>
+              <q-item-section v-if="!sidebarMini">{{ item.label }}</q-item-section>
+              <q-item-section v-if="!sidebarMini && item.badge" side>
+                <q-badge color="primary" :label="item.badge" />
+              </q-item-section>
+              <q-tooltip v-if="sidebarMini" anchor="center right" self="center left">
+                {{ item.label }}
+              </q-tooltip>
+            </q-item>
+          </template>
+        </q-scroll-area>
+
+        <!-- Footer: lock + collapse toggle -->
+        <div class="app-sidebar__foot">
+          <q-item clickable v-ripple class="app-nav-item" @click="lockAndRedirect">
+            <q-item-section avatar>
+              <q-icon name="lock" size="22px" color="negative" />
+            </q-item-section>
+            <q-item-section v-if="!sidebarMini" class="text-negative">Bloquear boveda</q-item-section>
+            <q-tooltip v-if="sidebarMini" anchor="center right" self="center left">Bloquear boveda</q-tooltip>
+          </q-item>
+          <q-item clickable v-ripple class="app-nav-item" @click="toggleSidebar">
+            <q-item-section avatar>
+              <q-icon :name="sidebarMini ? 'chevron_right' : 'chevron_left'" size="22px" />
+            </q-item-section>
+            <q-item-section v-if="!sidebarMini">Colapsar</q-item-section>
+          </q-item>
+        </div>
+      </div>
+    </q-drawer>
+
     <q-page-container>
       <!-- Breadcrumb trail — only when unlocked and route has crumbs defined -->
       <div v-if="vault.isUnlocked && crumbs.length > 0" class="app-breadcrumbs">
@@ -316,7 +421,7 @@ function toggleTheme() {
       <div class="footer-content">
         <div class="footer-left">
           <a class="footer-brand" href="https://attestto.org" target="_blank">
-            <span class="footer-brand__mark">tt</span>
+            <img :src="brandLogo" alt="Attestto" class="footer-brand__mark footer-brand__mark--img" />
             <span>Attestto</span>
           </a>
         </div>

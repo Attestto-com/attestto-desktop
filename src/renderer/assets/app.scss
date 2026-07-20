@@ -7,7 +7,7 @@
   --att-bg-surface: #162029;
   --att-bg-elevated: #1e2a34;
   --att-border: rgba(255, 255, 255, 0.08);
-  --att-border-accent: rgba(16, 185, 129, 0.2);
+  --att-border-accent: rgba(124, 58, 237, 0.25);
 
   // Text — high contrast
   // Bumped legibility 2026-04-08: muted/disabled were too dim against
@@ -20,10 +20,11 @@
 
   // Brand — single source for accent color
   // Change these 3 values to retheme the entire UI
-  --att-primary: #10b981;
-  --att-primary-dark: #0d9488;
-  --att-primary-soft: rgba(16, 185, 129, 0.08);
-  --att-primary-border: rgba(16, 185, 129, 0.2);
+  // CORTEX violet (2026-07-20) — aligns desktop shell with the CORTEX web app.
+  --att-primary: #7c3aed;
+  --att-primary-dark: #6d28d9;
+  --att-primary-soft: rgba(124, 58, 237, 0.12);
+  --att-primary-border: rgba(124, 58, 237, 0.3);
 
   // Typography scale — all sizes relative to base (rem)
   // base = html font-size (controlled by accessibility +/- in settings)
@@ -43,8 +44,8 @@ body.body--light {
   --att-bg-surface: #f8fafc;
   --att-bg-elevated: #e2e8f0;
   --att-bg-card: rgba(255, 255, 255, 0.85);
-  --att-border: rgba(16, 185, 129, 0.12);
-  --att-border-accent: rgba(16, 185, 129, 0.25);
+  --att-border: rgba(124, 58, 237, 0.12);
+  --att-border-accent: rgba(124, 58, 237, 0.25);
 
   --att-text-title: #0f172a;
   --att-text-subtitle: #1e293b;
@@ -52,8 +53,8 @@ body.body--light {
   --att-text-muted: #475569;
   --att-text-disabled: #64748b;
 
-  --att-primary-soft: rgba(16, 185, 129, 0.08);
-  --att-primary-border: rgba(16, 185, 129, 0.2);
+  --att-primary-soft: rgba(124, 58, 237, 0.1);
+  --att-primary-border: rgba(124, 58, 237, 0.25);
 }
 
 // ── Text size classes (use these everywhere) ──
@@ -416,6 +417,127 @@ body {
     min-height: 0 !important;
     line-height: 1.2 !important;
   }
+
+  // Icon-only variant (sidebar collapse toggle in header)
+  &--icon {
+    padding: 8px 10px;
+  }
+}
+
+// ── Left sidebar (CORTEX-style) ──
+.app-sidebar {
+  background: #0b1219 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+
+  .q-drawer__content {
+    background: #0b1219;
+  }
+
+  &__inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding-top: 34px; // clear the macOS traffic-light drag strip
+  }
+
+  &__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 1rem 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+  }
+
+  &__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--att-primary);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+
+  &__word {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--att-text-title);
+    letter-spacing: -0.3px;
+    white-space: nowrap;
+  }
+
+  &__accent {
+    color: var(--att-primary);
+  }
+
+  &__nav {
+    flex: 1;
+    min-height: 0;
+  }
+
+  &__section {
+    padding: 0.5rem 1.1rem 0.35rem;
+    margin-top: 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--att-text-disabled);
+  }
+
+  &__mini-sep {
+    margin: 0.5rem 0.9rem;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &__foot {
+    padding: 0.4rem 0 0.6rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+}
+
+.app-nav-item {
+  margin: 2px 0.6rem;
+  border-radius: 10px;
+  min-height: 42px;
+  color: var(--att-text-muted);
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  .q-item__section--avatar {
+    min-width: 34px;
+    padding-right: 10px;
+    color: var(--att-text-muted);
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--att-text-title);
+  }
+
+  &--active {
+    background: var(--att-primary-soft);
+    color: var(--att-text-title);
+
+    .q-item__section--avatar { color: var(--att-primary); }
+  }
+}
+
+// Brand marks rendered from the real logo asset (resources/icon.png),
+// not a text/SVG stand-in. Let the image fill its rounded box.
+img.app-sidebar__mark,
+img.footer-brand__mark--img {
+  object-fit: cover;
+  background: none !important;
+  padding: 0;
 }
 
 // ── Breadcrumb trail ──

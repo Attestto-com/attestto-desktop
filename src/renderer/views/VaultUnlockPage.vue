@@ -313,7 +313,7 @@ function goToRecovery() {
 
     &:hover:not(:disabled) {
       border-color: var(--att-primary);
-      background: rgba(16, 185, 129, 0.14);
+      background: rgba(124, 58, 237, 0.18);
     }
   }
 }
