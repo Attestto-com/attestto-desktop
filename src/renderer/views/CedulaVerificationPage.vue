@@ -8,6 +8,7 @@ import { setUserAvatar } from '../composables/useAvatar'
 import { validateCedulaFormat, formatCedula, TSE_AUTHORITY, PADRON_REGISTRY } from '../country/cr'
 import { CR_CANTONS, getCantonDownloadUrl, CR_PROVINCES } from '../country/cr/cantons'
 import { extractMRZFromImage, extractFromFront, analyzeDocument, type DocumentAnalysis } from '../country/cr/mrz-ocr'
+import { sanitizeName } from '../country/cr/name-utils'
 import {
   extractFaceDescriptor,
   compareDescriptors,
@@ -901,6 +902,20 @@ async function runVerifyDocument() {
   const clean = cedula.replace(/[^0-9]/g, '')
   if (!validateCedulaFormat(clean)) {
     tseValidation.value = { status: 'invalid', message: 'Formato de cedula invalido' }
+    step.value = 'review'
+    return
+  }
+
+  // Never issue an identity credential with a missing/garbled name. OCR can
+  // leave a single stray letter (e.g. "a"); require a plausible given name and
+  // first surname before proceeding, letting the user correct them in review.
+  const givenName = manualNombre.value || extractedData.value?.nombre || ''
+  const surname1 = manualApellido1.value || extractedData.value?.apellido1 || ''
+  if (!sanitizeName(givenName) || !sanitizeName(surname1)) {
+    tseValidation.value = {
+      status: 'invalid',
+      message: 'Ingresa el nombre y el primer apellido (minimo 2 letras cada uno)',
+    }
     step.value = 'review'
     return
   }

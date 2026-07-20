@@ -10,6 +10,7 @@
 // All processing is 100% local — nothing leaves the device.
 
 import Tesseract from 'tesseract.js'
+import { sanitizeName } from './name-utils'
 
 export interface MRZResult {
   success: boolean
@@ -619,19 +620,21 @@ function findNameFields(lines: string[]): { nombre: string; apellido1: string; a
       return ''
     }
 
-    // "Nombre:" — but NOT "Nombre del Padre/Madre"
+    // "Nombre:" — but NOT "Nombre del Padre/Madre".
+    // sanitizeName rejects OCR garbage (e.g. a lone "a"); a rejected value stays
+    // '' so a later line still has a chance to fill the field.
     if (!nombre && lower.includes('nombre') && !lower.includes('padre') && !lower.includes('madre') && !lower.includes('apellido')) {
-      nombre = extractValue(line, lines[i + 1])
+      nombre = sanitizeName(extractValue(line, lines[i + 1]))
     }
 
     // "1° Apellido" / "1er Apellido" / "Primer Apellido" / "1*Apellido"
     if (!apellido1 && lower.includes('apellido') && (lower.includes('1') || lower.includes('primer'))) {
-      apellido1 = extractValue(line, lines[i + 1])
+      apellido1 = sanitizeName(extractValue(line, lines[i + 1]))
     }
 
     // "2° Apellido" / "Segundo Apellido" / "2*Apellido"
     if (!apellido2 && lower.includes('apellido') && (lower.includes('2') || lower.includes('segundo'))) {
-      apellido2 = extractValue(line, lines[i + 1])
+      apellido2 = sanitizeName(extractValue(line, lines[i + 1]))
     }
   }
 
