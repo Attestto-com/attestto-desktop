@@ -37,7 +37,8 @@ watch(() => vault.isUnlocked, (unlocked) => {
 // Each crumb has a label and (optionally) a path to navigate to.
 interface Crumb { label: string; path?: string }
 const ROUTE_CRUMBS: Record<string, Crumb[]> = {
-  '/settings': [{ label: 'Mi cuenta' }],
+  // /settings renders its own in-page CORTEX-style breadcrumb (see SettingsPage);
+  // no global crumb here to avoid the duplicate "Mi cuenta" at the top of the pane.
   '/identity': [{ label: 'Mi cuenta', path: '/settings' }, { label: 'Verificacion de identidad' }],
   '/credentials': [{ label: 'Mi cuenta', path: '/settings' }, { label: 'Credenciales' }],
   '/verify/cr/cedula': [
