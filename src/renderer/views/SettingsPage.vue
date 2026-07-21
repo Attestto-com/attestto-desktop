@@ -210,41 +210,7 @@ const profileComplete = computed(() => profileItems.value.every(i => i.done))
     <!-- Onboarding journey — only when profile incomplete -->
     <JourneySteps v-if="!profileComplete" class="q-mb-lg" />
 
-    <!-- Header -->
-    <div class="settings-header">
-      <div>
-        <div class="settings-header__title-row">
-          <h1 class="settings-title">Mi cuenta</h1>
-          <q-badge
-            v-if="profileComplete"
-            color="positive"
-            class="profile-ready-badge"
-          >
-            <q-icon name="verified" size="14px" class="q-mr-xs" />
-            Perfil listo
-          </q-badge>
-        </div>
-        <p class="settings-subtitle">Administra tu identidad, seguridad y preferencias</p>
-      </div>
-      <div v-if="!profileComplete" class="profile-completion">
-        <q-circular-progress
-          :value="profileCompletion"
-          size="56px"
-          :thickness="0.2"
-          color="primary"
-          track-color="grey-8"
-          class="q-mr-sm"
-        >
-          <span class="completion-text">{{ profileCompletion }}%</span>
-        </q-circular-progress>
-        <div>
-          <div class="text-weight-bold">Perfil completo</div>
-          <div class="att-text-muted">
-            {{ profileItems.filter(i => i.done).length }}/{{ profileItems.length }} items
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- (Old header removed — replaced by the CORTEX-style acct-header-v2 above.) -->
 
     <div class="settings-grid">
       <!-- ════════════════════ LEFT COLUMN ════════════════════ -->
