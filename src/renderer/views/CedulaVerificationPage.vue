@@ -46,22 +46,11 @@ interface VcProofBlock {
   }
 }
 
-/**
- * Convert a raw 32-byte ed25519 pubkey into the desktop's `did:key:z…` form.
- * Mirrors `vault-service.ts` and `station-service.ts` so the three identifiers
- * (user vault, station master, per-credential sub-key) all share the same
- * encoding convention.
- */
-function subPubKeyToDidKey(publicKey: Uint8Array): string {
-  const multicodec = new Uint8Array(2 + publicKey.length)
-  multicodec[0] = 0xed
-  multicodec[1] = 0x01
-  multicodec.set(publicKey, 2)
-  // Browser base64url: btoa() doesn't do url-safe, so post-process.
-  const b64 = btoa(String.fromCharCode(...multicodec))
-  const b64u = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-  return `did:key:z${b64u}`
-}
+// SOC-191: this used to be a third private copy of the derivation, written to
+// "mirror vault-service.ts and station-service.ts" — and it mirrored their bug
+// too, base64url behind a base58btc `z`. Three copies agreeing was the reason
+// nobody noticed. The renderer imports the same function the main process uses.
+import { didKeyFromEd25519PublicKey as subPubKeyToDidKey } from '../../shared/did-key'
 
 // ── Flow state ──
 // front → back → review (OCR + manual edit) → validating (face match → padron lookup) → firma (optional upgrade) → done

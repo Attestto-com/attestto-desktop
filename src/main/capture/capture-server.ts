@@ -519,11 +519,34 @@ export class CaptureServer {
       const ks=Object.keys(v).filter(k=>v[k]!==undefined).sort();
       return '{'+ks.map(k=>JSON.stringify(k)+':'+jcs(v[k])).join(',')+'}';
     }
+    // SOC-191: this decoded the suffix as base64url, which agreed with the
+    // encoder in vault-service.ts and station-service.ts and with nothing
+    // else on earth. The multibase prefix z means base58btc. Inlined, not
+    // imported (no backticks in here: this whole page is a template literal),
+    // because this script is served as text to a phone browser; it is the one
+    // copy shared/did-key.ts cannot replace, and tests/did-key.spec.ts extracts
+    // these functions and runs them against the same vectors the module uses.
+    var B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    function b58ToBytes(s){
+      var bytes=[0];
+      for(var i=0;i<s.length;i++){
+        var v=B58.indexOf(s[i]); if(v<0) return null;
+        var carry=v;
+        for(var j=0;j<bytes.length;j++){carry+=bytes[j]*58;bytes[j]=carry&0xff;carry>>=8}
+        while(carry>0){bytes.push(carry&0xff);carry>>=8}
+      }
+      var n=bytes.length; while(n>0&&bytes[n-1]===0)n--;
+      var zeros=0; while(zeros<s.length&&s[zeros]===B58[0])zeros++;
+      var out=new Uint8Array(zeros+n);
+      for(var k=0;k<n;k++)out[zeros+k]=bytes[n-1-k];
+      return out;
+    }
     function didKeyToPub(did){
-      const m=/^did:key:z(.+)$/.exec(did||'');if(!m)return null;
-      const b=b64urlToBytes(m[1]);
-      if(b[0]!==0xed||b[1]!==0x01)return null; // Ed25519 multicodec
-      return b.slice(2);
+      const m=/^did:key:z([1-9A-HJ-NP-Za-km-z]+)$/.exec(did||'');if(!m)return null;
+      const b=b58ToBytes(m[1]);
+      if(!b||b[0]!==0xed||b[1]!==0x01)return null; // Ed25519 multicodec
+      const pub=b.slice(2);
+      return pub.length===32?pub:null;
     }
     async function verifyVp(vp){
       const vpBody={'@context':vp['@context'],type:vp.type,holder:vp.holder,verifiableCredential:vp.verifiableCredential};
