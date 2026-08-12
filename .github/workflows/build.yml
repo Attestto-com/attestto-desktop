@@ -1,10 +1,15 @@
 name: build
 
+# Every branch and every pull request. A trigger covering only the last hop
+# into main is not a gate: a PR based on any other branch ran NO JOB AT ALL,
+# so every step below was skipped rather than failed. That is the cheapest way
+# to disable a whole pipeline without touching a step, and it is how 37
+# commits reached attestto-creds-extension ungated.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
-    branches: [main]
+    branches: ['**']
   workflow_dispatch:
     inputs:
       verify_ref:
@@ -86,17 +91,29 @@ jobs:
         working-directory: attestto-desktop
         run: pnpm install --frozen-lockfile
 
+      # Seeds a violation of each gate below and requires a non-zero exit.
+      # Every blocker in the 2026-08-11 audit was a control that existed and
+      # had never executed, so "the step is present" stopped counting as
+      # evidence. See scripts/gate-self-test.mjs.
+      - name: Gate self-test
+        working-directory: attestto-desktop
+        run: pnpm run gate-self-test
+
       - name: Type-check
         working-directory: attestto-desktop
         run: pnpm type-check
 
-      - name: Build (electron-vite)
-        working-directory: attestto-desktop
-        run: pnpm exec electron-vite build
-
+      # Tests run BEFORE the electron build, which they did not. A build that
+      # succeeds after a failed test is a wasted signal, and the electron
+      # bundle is by far the slowest step here -- so a broken test used to
+      # cost a full build before anyone saw it.
       - name: Run tests with coverage
         working-directory: attestto-desktop
         run: pnpm test:coverage
+
+      - name: Build (electron-vite)
+        working-directory: attestto-desktop
+        run: pnpm exec electron-vite build
 
       - name: Guardrail — usePdfSignatures must wrap canonical verifier
         working-directory: attestto-desktop
