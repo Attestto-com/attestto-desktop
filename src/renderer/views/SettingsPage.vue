@@ -41,6 +41,18 @@ const handleWeb = computed(() => {
   return `cr-${clean}.attestto.id`
 })
 
+// The handle embeds the cédula — mask it for the always-visible display (the
+// full handle stays available under "Detalles técnicos" for copy). Keep the
+// last 4 digits, mask the rest: cr-•••••0877.attestto.id
+function maskCedula(clean: string): string {
+  return clean.length <= 4 ? '•'.repeat(clean.length) : '•'.repeat(clean.length - 4) + clean.slice(-4)
+}
+const handleWebMasked = computed(() => {
+  if (!userCedula.value) return null
+  const clean = userCedula.value.replace(/[^0-9]/g, '')
+  return `cr-${maskCedula(clean)}.attestto.id`
+})
+
 const handleSns = computed(() => {
   if (!userCedula.value) return null
   const clean = userCedula.value.replace(/[^0-9]/g, '')
@@ -157,44 +169,48 @@ const profileComplete = computed(() => profileItems.value.every(i => i.done))
 
 <template>
   <q-page class="settings-page" data-testid="view-settings-root">
-    <!-- Onboarding journey — only when profile incomplete -->
-    <JourneySteps v-if="!profileComplete" class="q-mb-lg" />
-
-    <!-- Header -->
-    <div class="settings-header">
-      <div>
-        <div class="settings-header__title-row">
-          <h1 class="settings-title">Mi cuenta</h1>
-          <q-badge
-            v-if="profileComplete"
-            color="positive"
-            class="profile-ready-badge"
-          >
-            <q-icon name="verified" size="14px" class="q-mr-xs" />
-            Perfil listo
-          </q-badge>
-        </div>
-        <p class="settings-subtitle">Administra tu identidad, seguridad y preferencias</p>
-      </div>
-      <div v-if="!profileComplete" class="profile-completion">
-        <q-circular-progress
-          :value="profileCompletion"
-          size="56px"
-          :thickness="0.2"
-          color="primary"
-          track-color="grey-8"
-          class="q-mr-sm"
-        >
-          <span class="completion-text">{{ profileCompletion }}%</span>
-        </q-circular-progress>
+    <!-- ═══ NEW CORTEX-style account header (migration: the old header below is
+         removed later once this replaces it). ═══ -->
+    <div class="acct-header-v2">
+      <nav class="acct-breadcrumbs">
+        <a class="acct-crumb" @click="$router.push('/')"><q-icon name="home" size="16px" /></a>
+        <q-icon name="chevron_right" size="14px" class="acct-crumb__sep" />
+        <span class="acct-crumb acct-crumb--active">Mi cuenta</span>
+      </nav>
+      <div class="acct-header-v2__row">
         <div>
-          <div class="text-weight-bold">Perfil completo</div>
-          <div class="att-text-muted">
-            {{ profileItems.filter(i => i.done).length }}/{{ profileItems.length }} items
+          <div class="acct-header-v2__title-row">
+            <h1 class="acct-title-v2">Mi cuenta</h1>
+            <q-badge v-if="profileComplete" color="positive" class="acct-ready-v2">
+              <q-icon name="verified" size="14px" class="q-mr-xs" />Perfil listo
+            </q-badge>
+          </div>
+          <p class="acct-subtitle-v2">Administra tu identidad, seguridad y preferencias</p>
+        </div>
+        <div class="acct-completion-v2">
+          <q-circular-progress
+            :value="profileCompletion"
+            size="52px"
+            :thickness="0.18"
+            :color="profileComplete ? 'positive' : 'primary'"
+            track-color="grey-8"
+          >
+            <span class="acct-completion-v2__pct">{{ profileCompletion }}%</span>
+          </q-circular-progress>
+          <div>
+            <div class="text-weight-bold">Perfil completo</div>
+            <div class="att-text-muted" style="font-size: var(--att-text-xs);">
+              {{ profileItems.filter(i => i.done).length }}/{{ profileItems.length }} items
+            </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Onboarding journey — only when profile incomplete -->
+    <JourneySteps v-if="!profileComplete" class="q-mb-lg" />
+
+    <!-- (Old header removed — replaced by the CORTEX-style acct-header-v2 above.) -->
 
     <div class="settings-grid">
       <!-- ════════════════════ LEFT COLUMN ════════════════════ -->
@@ -224,8 +240,8 @@ const profileComplete = computed(() => profileItems.value.every(i => i.done))
                   Verificada
                 </q-badge>
               </div>
-              <div v-if="handleWeb" class="identity-info__sub-handle">
-                {{ handleWeb }}
+              <div v-if="handleWebMasked" class="identity-info__sub-handle">
+                {{ handleWebMasked }}
               </div>
               <div class="att-text-muted" style="margin-top: 0.25rem;">
                 <q-icon
@@ -673,6 +689,61 @@ const profileComplete = computed(() => profileItems.value.every(i => i.done))
 <style scoped lang="scss">
 .settings-page {
   padding: 2rem 2.5rem;
+}
+
+/* ── CORTEX-style account header (v2) ── */
+.acct-header-v2 { margin-bottom: 2rem; }
+
+.acct-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  color: var(--att-text-muted);
+
+  .acct-crumb {
+    display: inline-flex;
+    align-items: center;
+    color: var(--att-text-muted);
+    cursor: pointer;
+    text-decoration: none;
+    &:hover { color: var(--att-primary); }
+  }
+  .acct-crumb--active { color: var(--att-text-body); font-weight: 600; cursor: default; }
+  .acct-crumb__sep { color: var(--att-text-disabled); }
+}
+
+.acct-header-v2__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.acct-header-v2__title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.acct-title-v2 {
+  font-size: var(--att-text-2xl);
+  font-weight: 800;
+  color: var(--att-text-title);
+  margin: 0;
+  line-height: 1.1;
+}
+.acct-ready-v2 { padding: 5px 12px; border-radius: 999px; font-weight: 600; }
+.acct-subtitle-v2 {
+  margin: 6px 0 0;
+  color: var(--att-text-muted);
+  font-size: var(--att-text-md);
+}
+.acct-completion-v2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+
+  .acct-completion-v2__pct { font-size: 0.8rem; font-weight: 700; color: var(--att-text-body); }
 }
 
 .settings-header {

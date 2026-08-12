@@ -8,6 +8,7 @@ import { setUserAvatar } from '../composables/useAvatar'
 import { validateCedulaFormat, formatCedula, TSE_AUTHORITY, PADRON_REGISTRY } from '../country/cr'
 import { CR_CANTONS, getCantonDownloadUrl, CR_PROVINCES } from '../country/cr/cantons'
 import { extractMRZFromImage, extractFromFront, analyzeDocument, type DocumentAnalysis } from '../country/cr/mrz-ocr'
+import { sanitizeName } from '../country/cr/name-utils'
 import {
   extractFaceDescriptor,
   compareDescriptors,
@@ -228,6 +229,57 @@ async function startMobileCapture() {
         break
     }
   })
+}
+
+/**
+ * Reset the whole verification to a clean slate. Clears the persisted session
+ * (the reason a bad scan kept coming back on reload), tears down any active
+ * mobile capture listener, wipes captured images / OCR / validation state, and
+ * returns to the capture-method chooser so the user can start over.
+ */
+function restartVerification() {
+  if (captureEventCleanup) { captureEventCleanup(); captureEventCleanup = null }
+
+  // Drop the persisted (possibly bad) session + liveness flag.
+  localStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem('attestto-liveness-done')
+
+  // Captured images + extracted data.
+  frontCapture.value = null
+  backCapture.value = null
+  selfieCapture.value = null
+  extractedData.value = null
+  docAnalysis.value = null
+  ocrSource.value = null
+
+  // Manual fields.
+  manualCedula.value = ''
+  manualNombre.value = ''
+  manualApellido1.value = ''
+  manualApellido2.value = ''
+
+  // Validation / face / padrón state.
+  tseValidation.value = { status: 'idle', message: '' }
+  faceMatchScore.value = null
+  pendingFaceDescriptors.value = null
+  mobileLiveness.value = null
+  ocrProgress.value = 0
+  ocrRunning.value = false
+  faceMatchDone.value = false
+  padronDownloading.value = false
+  padronLookupDone.value = false
+  padronMatch.value = null
+  nameMatch.value = null
+  padronAskCanton.value = false
+
+  // Capture UI + mobile session.
+  mobileSessionUrl.value = ''
+  mobileQrDataUrl.value = ''
+  mobileStatus.value = 'idle'
+  captureMode.value = 'choose'
+
+  // Back to the start.
+  step.value = 'front'
 }
 
 function startWebcamCapture() {
@@ -854,6 +906,20 @@ async function runVerifyDocument() {
     return
   }
 
+  // Never issue an identity credential with a missing/garbled name. OCR can
+  // leave a single stray letter (e.g. "a"); require a plausible given name and
+  // first surname before proceeding, letting the user correct them in review.
+  const givenName = manualNombre.value || extractedData.value?.nombre || ''
+  const surname1 = manualApellido1.value || extractedData.value?.apellido1 || ''
+  if (!sanitizeName(givenName) || !sanitizeName(surname1)) {
+    tseValidation.value = {
+      status: 'invalid',
+      message: 'Ingresa el nombre y el primer apellido (minimo 2 letras cada uno)',
+    }
+    step.value = 'review'
+    return
+  }
+
   // ── Step 1: Real face match via @vladmandic/face-api ──
   // Extract 128D descriptor from cédula photo + selfie, compute euclidean
   // distance, store both as part of the verification session.
@@ -1072,6 +1138,7 @@ async function linkFirmaDigital() {
 
 // RFC 8785 JCS canonicalization — deterministic JSON for signing
 import { canonicalize } from '../../shared/jcs'
+import { verificationMethodFor } from '../../shared/verification-method'
 
 async function storeCredential(cedula: string) {
   const nombre = manualNombre.value || extractedData.value?.nombre || ''
@@ -1167,7 +1234,7 @@ async function storeCredential(cedula: string) {
       proof = {
         type: 'Ed25519Signature2020',
         created: prepared.createdAt,
-        verificationMethod: `${subDidKey}#key-1`,
+        verificationMethod: verificationMethodFor(subDidKey),
         proofPurpose: 'assertionMethod',
         proofValue: `z${finalized.proofValueB64}`,
         delegationProof: {
@@ -1290,6 +1357,17 @@ function goBack() {
             Tribunal Supremo de Elecciones — Republica de Costa Rica
           </div>
         </div>
+        <q-space />
+        <q-btn
+          v-if="step !== 'front' || captureMode !== 'choose'"
+          flat dense no-caps
+          icon="restart_alt"
+          label="Empezar de nuevo"
+          class="att-text-muted"
+          @click="restartVerification"
+        >
+          <q-tooltip>Descarta el escaneo actual y reinicia la verificacion</q-tooltip>
+        </q-btn>
       </div>
 
       <!-- Step indicator -->

@@ -1,14 +1,14 @@
 // ── Capture IPC Handlers ──
 // Exposes the local capture server to the renderer process.
 
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain } from 'electron'
 import { CaptureServer } from './capture-server'
 import { vaultService } from '../vault/vault-service'
 
 let captureServer: CaptureServer | null = null
 
-export function registerCaptureIPC(mainWindow: BrowserWindow): void {
-  ipcMain.handle('capture:start-server', async () => {
+export function registerCaptureIPC(): void {
+  ipcMain.handle('capture:start-server', async (event) => {
     if (!captureServer) {
       captureServer = new CaptureServer()
     }
@@ -16,9 +16,17 @@ export function registerCaptureIPC(mainWindow: BrowserWindow): void {
     const did = vaultService.getDid() || undefined
     const port = await captureServer.start(did)
 
-    // Forward events to renderer
-    captureServer.onEvent((event) => {
-      mainWindow.webContents.send('capture:event', event)
+    // Forward events to the renderer that started the server. Bind to the
+    // invoking webContents (live at call time), NOT a captured window ref —
+    // the window can be closed and recreated (macOS `activate`), which would
+    // leave a stale reference and throw "Object has been destroyed" on send.
+    // The renderer re-invokes start-server each time it enters the capture
+    // flow, so `event.sender` is always the current, live webContents.
+    const sender = event.sender
+    captureServer.onEvent((captureEvent) => {
+      if (!sender.isDestroyed()) {
+        sender.send('capture:event', captureEvent)
+      }
     })
 
     return { port }
@@ -29,6 +37,18 @@ export function registerCaptureIPC(mainWindow: BrowserWindow): void {
       throw new Error('Capture server not started')
     }
     return captureServer.createSession()
+  })
+
+  ipcMain.handle('capture:create-present-session', async () => {
+    if (!captureServer) {
+      throw new Error('Capture server not started')
+    }
+    return captureServer.createPresentSession()
+  })
+
+  ipcMain.handle('capture:submit-presentation', async (_event, sessionId: string, vp: unknown) => {
+    if (!captureServer) return false
+    return captureServer.submitPresentation(sessionId, vp)
   })
 
   ipcMain.handle('capture:get-session', async (_event, sessionId: string) => {

@@ -9,6 +9,7 @@
 import { ref } from 'vue'
 import { canonicalize } from '../../shared/jcs'
 import type { VaultCredential } from '../../shared/vault-api'
+import { verificationMethodFor } from '../../shared/verification-method'
 
 export interface VerifiablePresentation {
   '@context': string[]
@@ -69,7 +70,7 @@ export function usePresentation() {
         '@context': vpBody['@context'],
         type: 'Ed25519Signature2020',
         created,
-        verificationMethod: `${holderDid}#key-1`,
+        verificationMethod: verificationMethodFor(holderDid),
         proofPurpose: 'authentication',
         nonce,
         domain: options.domain,
@@ -89,7 +90,7 @@ export function usePresentation() {
         proof: {
           type: 'Ed25519Signature2020',
           created,
-          verificationMethod: `${holderDid}#key-1`,
+          verificationMethod: verificationMethodFor(holderDid),
           proofPurpose: 'authentication',
           proofValue,
           nonce,

@@ -5,9 +5,11 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import PdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs?worker'
 import { verifyPdfSignatures, type PdfVerifyResult } from '../composables/usePdfSignatures'
 import { useVaultStore } from '../stores/vault'
+import { usePdfInboxStore } from '../stores/pdfInbox'
 import { Dialog, Notify } from 'quasar'
 
 const vault = useVaultStore()
+const pdfInbox = usePdfInboxStore()
 const signing = ref(false)
 // `pdfBytes` is forward-declared below; we wrap canSign in a function-ish
 // computed that re-evaluates whenever the ref changes.
@@ -441,6 +443,13 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown)
+  // A PDF handed off from another view (e.g. dropped on the unlock screen).
+  const handoff = pdfInbox.consume()
+  if (handoff) {
+    fileName.value = handoff.name
+    loadDocument(handoff.bytes)
+    return
+  }
   const filePath = route.query.file as string
   if (filePath) openFromPath(filePath)
   const api = (window as any).presenciaAPI

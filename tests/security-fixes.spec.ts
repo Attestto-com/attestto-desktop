@@ -65,7 +65,10 @@ describe('ATT-275: CORS restriction on capture server', () => {
   it('restricts origin to the local server address', () => {
     const content = source()
     expect(content).toContain('allowedOrigin')
-    expect(content).toMatch(/https:\/\/\$\{localIP\}:\$\{this\.port\}/)
+    // Scheme-agnostic: the interim capture server serves plain HTTP on the LAN
+    // (self-signed HTTPS dead-ends on iOS); a magic-domain build will restore
+    // HTTPS. Either way the origin must be pinned to the local address, not '*'.
+    expect(content).toMatch(/https?:\/\/\$\{localIP\}:\$\{this\.port\}/)
   })
 
   it('still sets CORS methods and headers', () => {

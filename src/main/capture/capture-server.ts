@@ -1,32 +1,35 @@
-// ── Local Capture Server (HTTPS) ──
-// Runs an HTTPS + WSS server on the local network so a phone
-// on the same WiFi can use getUserMedia for live camera capture.
+// ── Local Capture Server (HTTP + app-layer E2E) ──
+// Runs an HTTP + WS server on the local network so a phone on the same WiFi
+// can capture identity documents and a selfie.
 //
-// HTTPS is required because mobile browsers block getUserMedia on
-// non-secure origins. We generate a self-signed cert at startup
-// using the `selfsigned` package. The phone will see a cert warning
-// once — after accepting, the live camera viewfinder works.
+// Why HTTP, not HTTPS: a LAN-IP host can only carry a self-signed cert, which
+// mobile Safari rejects for the wss:// upgrade (and getUserMedia can't run in
+// that context anyway), producing the "Not Secure" + "Error de conexion"
+// dead end. Confidentiality does NOT rely on TLS here — see Security below.
+// (The durable fix, a real-cert PWA at mobile.attestto.com streaming over the
+// mesh, is tracked separately; this HTTP path is the working interim.)
 //
 // Flow:
-// 1. Desktop generates self-signed cert + starts HTTPS server
-// 2. QR code shown: https://{local-ip}:{port}/capture/{session-id}
-// 3. Phone scans QR → accepts cert → opens mobile capture page
-// 4. Phone captures front + back (rear cam) + selfie (front cam with liveness)
-// 5. Images + liveness data sent over WSS → desktop receives
-// 6. Phone prompted to install PWA wallet
+// 1. Desktop starts the HTTP server and mints an ephemeral nacl box keypair.
+// 2. QR shown: http://{local-ip}:{port}/capture/{session-id}?pk={desktop-pub}
+// 3. Phone scans QR → opens the capture page (no cert warning).
+// 4. Phone captures front + back + selfie via the native camera (file input;
+//    getUserMedia is unavailable over HTTP, so the page falls back to it).
+// 5. Frames are sent over ws:// but sealed end-to-end (see Security).
 //
-// Security: session IDs are single-use, expire after 5 minutes,
-// and the phone must be on the same local network.
-// The self-signed cert is DID-bound — its Subject includes the
-// user's did:key, making it verifiable without a CA.
+// Security: the phone derives an nacl ECDH shared key against the desktop
+// public key it read from the QR (?pk=), so every frame is secretbox-sealed
+// to the desktop — a network observer sees only ciphertext and a MITM cannot
+// derive the key without the desktop secret. Trust is rooted in the QR the
+// user physically scanned on the desktop (the self-certifying did:key idea,
+// moved from the TLS layer to the app layer). Session IDs are single-use and
+// expire after 5 minutes; the phone must be on the same local network.
 
-import { createServer as createHttpsServer } from 'node:https'
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createServer as createHttpServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http'
 import { WebSocketServer, WebSocket } from 'ws'
 import { networkInterfaces } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import nacl from 'tweetnacl'
-import { generate as generateSelfSigned } from 'selfsigned'
 
 export interface LivenessResult {
   faceDetected: boolean
@@ -38,6 +41,9 @@ export interface CaptureSession {
   id: string
   createdAt: number
   expiresAt: number
+  /** 'capture' = phone sends document images (default). 'present' = phone is a
+   *  verifier: it connects, sends a challenge, and receives a signed VP back. */
+  mode?: 'capture' | 'present'
   status: 'waiting' | 'connected' | 'capturing' | 'complete' | 'expired'
   frontImage?: string   // base64 jpeg
   backImage?: string    // base64 jpeg
@@ -61,11 +67,18 @@ export type CaptureEvent =
   | { type: 'selfie-captured'; sessionId: string; image: string; livenessResult?: LivenessResult }
   | { type: 'capture-complete'; sessionId: string }
   | { type: 'session-expired'; sessionId: string }
+  // ── Presentation (mode: 'present') ──
+  // The phone (verifier) connected and sent a challenge; the desktop must build
+  // a VP bound to `nonce` and submit it via submitPresentation(). `domain` is
+  // the verifier's identity/origin, if it sent one.
+  | { type: 'present-connected'; sessionId: string }
+  | { type: 'present-challenge'; sessionId: string; nonce: string; domain?: string }
+  | { type: 'present-complete'; sessionId: string }
 
 const SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
 export class CaptureServer {
-  private httpServer: ReturnType<typeof createHttpsServer> | null = null
+  private httpServer: Server | null = null
   private wss: WebSocketServer | null = null
   private sessions = new Map<string, CaptureSession>()
   private port = 0
@@ -73,46 +86,24 @@ export class CaptureServer {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null
   private userDid: string | null = null
 
-  /**
-   * Generate a self-signed cert at startup. The cert Subject embeds the
-   * user's DID (when present) so the phone can later pin trust against the
-   * same DID it sees in the QR code, without needing a CA. Cert is ephemeral
-   * (1-day validity, rotated on every server start) and unique per session.
-   */
-  private async generateCert(did: string | null): Promise<{ key: string; cert: string }> {
-    const localIP = this.getLocalIP()
-    const cn = did ? `did:${did.replace(/^did:/, '')}` : 'attestto-capture'
-    const notBeforeDate = new Date()
-    const notAfterDate = new Date(notBeforeDate.getTime() + 24 * 60 * 60 * 1000)
-    const pems = await generateSelfSigned([{ name: 'commonName', value: cn }], {
-      keySize: 2048,
-      algorithm: 'sha256',
-      notBeforeDate,
-      notAfterDate,
-      extensions: [
-        {
-          name: 'subjectAltName',
-          altNames: [
-            { type: 2, value: 'localhost' },
-            { type: 7, ip: '127.0.0.1' },
-            { type: 7, ip: localIP },
-          ],
-        },
-      ],
-    })
-    return { key: pems.private, cert: pems.cert }
-  }
+  // Transport note: this server runs over plain HTTP, not HTTPS. A LAN-IP
+  // server can only hold a self-signed cert, which mobile Safari rejects for
+  // the wss:// upgrade (and camera getUserMedia can't run in that context
+  // anyway). Confidentiality does NOT depend on TLS here: the phone derives an
+  // nacl ECDH shared key against the desktop public key carried in the QR
+  // (?pk=), so every frame is secretbox-sealed to the desktop end-to-end. A
+  // network attacker sees only ciphertext; MITM cannot derive the key without
+  // the desktop secret. Over HTTP the phone falls back to native-camera file
+  // input (getUserMedia is unavailable), which needs no secure context.
 
   /** Start the capture server on a random available port */
   async start(did?: string): Promise<number> {
     this.userDid = did || null
-    console.log(`[capture] Starting HTTPS server (DID: ${did || 'anonymous'})`)
-
-    const { key, cert } = await this.generateCert(this.userDid)
+    console.log(`[capture] Starting HTTP server (DID: ${did || 'anonymous'})`)
 
     return new Promise((resolve, reject) => {
       const handler = (req: IncomingMessage, res: ServerResponse) => this.handleHTTP(req, res)
-      this.httpServer = createHttpsServer({ key, cert }, handler)
+      this.httpServer = createHttpServer(handler)
 
       this.wss = new WebSocketServer({ server: this.httpServer })
       this.wss.on('connection', (ws, req) => this.handleWS(ws, req))
@@ -121,7 +112,7 @@ export class CaptureServer {
         const addr = this.httpServer!.address()
         if (addr && typeof addr === 'object') {
           this.port = addr.port
-          console.log(`[capture] HTTPS server started on port ${this.port}`)
+          console.log(`[capture] HTTP server started on port ${this.port}`)
 
           // Clean up expired sessions every 30s
           this.cleanupInterval = setInterval(() => this.cleanupExpired(), 30_000)
@@ -173,16 +164,79 @@ export class CaptureServer {
 
     // Embed public key in URL so phone can encrypt from first message
     const pubKeyHex = Buffer.from(keyPair.publicKey).toString('hex')
-    const url = `https://${localIP}:${this.port}/capture/${sessionId}?pk=${pubKeyHex}`
+    const url = `http://${localIP}:${this.port}/capture/${sessionId}?pk=${pubKeyHex}`
 
     this.emit({ type: 'session-created', sessionId, url })
 
     return { sessionId, url }
   }
 
+  /**
+   * Create a PRESENTATION session. The desktop is the holder: it shows the
+   * returned QR, the phone (verifier) scans it and connects, sends a challenge,
+   * and the desktop replies with a VP signed over that challenge. The QR carries
+   * ONLY the connection engagement (LAN address + ephemeral pubkey + session id)
+   * — never the credential. Anti-replay comes from the phone's per-connection
+   * nonce; confidentiality from the same nacl box E2E as the capture flow.
+   */
+  createPresentSession(): { sessionId: string; url: string } {
+    const sessionId = randomUUID().substring(0, 8)
+    const localIP = this.getLocalIP()
+    const keyPair = nacl.box.keyPair()
+
+    const session: CaptureSession = {
+      id: sessionId,
+      mode: 'present',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + SESSION_TTL_MS,
+      status: 'waiting',
+      keyPair,
+    }
+    this.sessions.set(sessionId, session)
+
+    const pubKeyHex = Buffer.from(keyPair.publicKey).toString('hex')
+    // http:// engagement — the phone browser opens this desktop-served page,
+    // which then connects same-origin over ws:// (no HTTPS/mixed-content wall,
+    // same trick as the capture flow). The page reads the desktop pubkey from
+    // ?pk= and the session id from the path.
+    const url = `http://${localIP}:${this.port}/present/${sessionId}?pk=${pubKeyHex}`
+    return { sessionId, url }
+  }
+
+  /**
+   * Submit the holder's signed VP for a present session. Called by the renderer
+   * after it builds the VP over the phone's challenge nonce; the server relays
+   * it to the phone over the (encrypted) ws channel and completes the session.
+   */
+  submitPresentation(sessionId: string, vp: unknown): boolean {
+    const session = this.sessions.get(sessionId)
+    if (!session || session.mode !== 'present' || !session.ws) return false
+    this.sendToPhone(session, { type: 'presentation', vp })
+    session.status = 'complete'
+    this.emit({ type: 'present-complete', sessionId })
+    return true
+  }
+
   /** Get session status */
   getSession(sessionId: string): CaptureSession | undefined {
     return this.sessions.get(sessionId)
+  }
+
+  /** Send a message to the phone, E2E-sealed when a shared key exists. */
+  private sendToPhone(session: CaptureSession, payload: Record<string, unknown>): void {
+    if (!session.ws) return
+    if (session.sharedKey) {
+      const plaintext = new TextEncoder().encode(JSON.stringify(payload))
+      const nonce = nacl.randomBytes(24)
+      const ciphertext = nacl.secretbox(plaintext, nonce, session.sharedKey)
+      session.ws.send(JSON.stringify({
+        type: 'encrypted',
+        nonce: Buffer.from(nonce).toString('hex'),
+        data: Buffer.from(ciphertext).toString('hex'),
+      }))
+    } else {
+      session.ws.send(JSON.stringify(payload))
+    }
   }
 
   /** Get the local network IP */
@@ -204,7 +258,7 @@ export class CaptureServer {
 
     // ATT-275: restrict CORS to the capture page origin (same server)
     const localIP = this.getLocalIP()
-    const allowedOrigin = `https://${localIP}:${this.port}`
+    const allowedOrigin = `http://${localIP}:${this.port}`
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -215,9 +269,27 @@ export class CaptureServer {
       return
     }
 
-    // Capture page: /capture/{sessionId}  (ignore query string)
     const pathname = url.split('?')[0]
     console.log(`[capture] HTTP ${req.method} ${pathname} (sessions: ${[...this.sessions.keys()].join(', ')})`)
+
+    // Present-verify page: /present/{sessionId} — served to the phone so it can
+    // connect same-origin over ws:// (no HTTPS/mixed-content wall) and run the
+    // challenge → receive VP → verify flow entirely in-browser.
+    const presentMatch = pathname.match(/^\/present\/([a-z0-9-]+)$/)
+    if (presentMatch) {
+      const sessionId = presentMatch[1]
+      const session = this.sessions.get(sessionId)
+      if (!session || session.mode !== 'present' || Date.now() > session.expiresAt) {
+        res.writeHead(410, { 'Content-Type': 'text/html; charset=utf-8' })
+        res.end('<html><body style="font-family:system-ui;background:#0a0b0f;color:#fff;text-align:center;padding:3rem"><h1>Sesión expirada</h1><p>Generá un nuevo código QR desde el escritorio.</p></body></html>')
+        return
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.end(this.getPresentVerifyHTML(sessionId))
+      return
+    }
+
+    // Capture page: /capture/{sessionId}  (ignore query string)
     const captureMatch = pathname.match(/^\/capture\/([a-z0-9-]+)$/)
     if (captureMatch) {
       const sessionId = captureMatch[1]
@@ -259,7 +331,11 @@ export class CaptureServer {
 
     session.status = 'connected'
     session.ws = ws
-    this.emit({ type: 'phone-connected', sessionId })
+    this.emit(
+      session.mode === 'present'
+        ? { type: 'present-connected', sessionId }
+        : { type: 'phone-connected', sessionId },
+    )
 
     ws.on('message', (data) => {
       try {
@@ -316,6 +392,15 @@ export class CaptureServer {
     const session = this.sessions.get(sessionId)
     if (!session) return
 
+    // ── Presentation mode: the phone (verifier) sends a challenge; the desktop
+    // builds the VP in the renderer and calls submitPresentation(). ──
+    if (session.mode === 'present') {
+      if (msg.type === 'challenge' && typeof msg.nonce === 'string') {
+        this.emit({ type: 'present-challenge', sessionId, nonce: msg.nonce, domain: msg.domain })
+      }
+      return
+    }
+
     switch (msg.type) {
       case 'front-captured':
         session.frontImage = msg.image
@@ -370,8 +455,149 @@ export class CaptureServer {
     this.eventCallback?.(event)
   }
 
+  /**
+   * The phone-side verifier page for a present session. Served over HTTP so the
+   * phone browser can connect same-origin over ws://. It connects, does the nacl
+   * key-exchange, sends a fresh challenge nonce, receives the desktop's signed
+   * VP, and verifies it fully in-browser: Ed25519 signature over the JCS proof
+   * input (pubkey extracted from the holder did:key), plus nonce binding.
+   */
+  private getPresentVerifyHTML(sessionId: string): string {
+    const wsUrl = `ws://${this.getLocalIP()}:${this.port}/ws/${sessionId}`
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#0a0b0f">
+  <title>Attestto — Verificar presentación</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,sans-serif;background:#0a0b0f;color:#fff;min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:24px 16px}
+    .brand{font-size:1.25rem;font-weight:700;margin-bottom:24px}
+    .brand .to{color:#7c3aed}
+    .card{width:100%;max-width:420px;background:#161822;border:1px solid #262a38;border-radius:16px;padding:24px;text-align:center}
+    .spinner{width:40px;height:40px;border:4px solid #262a38;border-top-color:#7c3aed;border-radius:50%;animation:spin 1s linear infinite;margin:16px auto}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .status{font-size:.9rem;color:#a0a0b0;margin-top:8px}
+    .result-icon{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:2rem}
+    .ok{background:rgba(34,197,94,.15);color:#22c55e}
+    .bad{background:rgba(239,68,68,.15);color:#ef4444}
+    h2{font-size:1.15rem;margin-bottom:4px}
+    .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #262a38;font-size:.85rem;text-align:left}
+    .row .k{color:#8b8fa3}
+    .row .v{color:#fff;word-break:break-all;text-align:right}
+    .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:.72rem;font-weight:600;margin:2px}
+    .b-ok{background:rgba(34,197,94,.15);color:#22c55e}
+    .b-bad{background:rgba(239,68,68,.15);color:#ef4444}
+    .details{margin-top:16px}
+  </style>
+</head>
+<body>
+  <div class="brand">attest<span class="to">to</span></div>
+  <div class="card" id="card">
+    <div class="spinner"></div>
+    <div class="status" id="status">Conectando con el escritorio…</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js" integrity="sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp" crossorigin="anonymous"></script>
+  <script>
+    const WS_URL = ${JSON.stringify(wsUrl)};
+    const DESKTOP_PK_HEX = new URLSearchParams(location.search).get('pk') || '';
+    let ws, sharedKey = null, challengeNonce = '';
+
+    const $ = id => document.getElementById(id);
+    const setStatus = t => { const s = $('status'); if (s) s.textContent = t; };
+
+    function hexToBytes(h){const a=new Uint8Array(h.length/2);for(let i=0;i<h.length;i+=2)a[i/2]=parseInt(h.substr(i,2),16);return a}
+    function bytesToHex(b){return Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join('')}
+    function b64urlToBytes(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const bin=atob(s);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a}
+    async function sha256hex(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return bytesToHex(new Uint8Array(buf))}
+    // Minimal JCS (RFC 8785) — sufficient for the ASCII/string proof input.
+    function jcs(v){
+      if(v===null||typeof v!=='object')return JSON.stringify(v);
+      if(Array.isArray(v))return '['+v.map(jcs).join(',')+']';
+      const ks=Object.keys(v).filter(k=>v[k]!==undefined).sort();
+      return '{'+ks.map(k=>JSON.stringify(k)+':'+jcs(v[k])).join(',')+'}';
+    }
+    function didKeyToPub(did){
+      const m=/^did:key:z(.+)$/.exec(did||'');if(!m)return null;
+      const b=b64urlToBytes(m[1]);
+      if(b[0]!==0xed||b[1]!==0x01)return null; // Ed25519 multicodec
+      return b.slice(2);
+    }
+    async function verifyVp(vp){
+      const vpBody={'@context':vp['@context'],type:vp.type,holder:vp.holder,verifiableCredential:vp.verifiableCredential};
+      const vpHash=await sha256hex(JSON.stringify(vpBody));
+      const p=vp.proof||{};
+      const proofInput={'@context':vp['@context'],type:'Ed25519Signature2020',created:p.created,verificationMethod:p.verificationMethod,proofPurpose:p.proofPurpose,nonce:p.nonce,domain:p.domain,vpHash};
+      const msg=new TextEncoder().encode(jcs(proofInput));
+      let sigOk=false;const pub=didKeyToPub(vp.holder);
+      try{ if(pub&&p.proofValue) sigOk=nacl.sign.detached.verify(msg,b64urlToBytes(p.proofValue),pub); }catch(e){sigOk=false}
+      const nonceOk=!!challengeNonce&&p.nonce===challengeNonce;
+      return {sigOk,nonceOk,resolvable:!!pub};
+    }
+
+    function credType(vc){const t=Array.isArray(vc&&vc.type)?vc.type:[];return t.find(x=>x!=='VerifiableCredential')||'Credencial'}
+    function subjName(vc){const s=(vc&&vc.credentialSubject)||{};return s.nombre||s.name||''}
+    // The VP is untrusted input (a hostile presenter could put markup in cred
+    // fields) — escape everything interpolated into innerHTML.
+    function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+    async function showResult(vp){
+      const v=await verifyVp(vp);
+      const vc=(vp.verifiableCredential||[])[0]||{};
+      const pass=v.sigOk&&v.nonceOk;
+      const name=subjName(vc);
+      $('card').innerHTML=
+        '<div class="result-icon '+(pass?'ok':'bad')+'">'+(pass?'✓':'!')+'</div>'+
+        '<h2>'+(pass?'Presentación verificada':'No verificada')+'</h2>'+
+        '<div class="status">'+esc(credType(vc))+(name?(' · '+esc(name)):'')+'</div>'+
+        '<div class="details">'+
+          '<div class="row"><span class="k">Firma (Ed25519)</span><span class="v"><span class="badge '+(v.sigOk?'b-ok':'b-bad')+'">'+(v.sigOk?'válida':(v.resolvable?'inválida':'DID no resoluble'))+'</span></span></div>'+
+          '<div class="row"><span class="k">Desafío (anti-replay)</span><span class="v"><span class="badge '+(v.nonceOk?'b-ok':'b-bad')+'">'+(v.nonceOk?'coincide':'no coincide')+'</span></span></div>'+
+          '<div class="row"><span class="k">Titular (DID)</span><span class="v">'+esc(vp.holder||'—')+'</span></div>'+
+        '</div>';
+    }
+
+    function connect(){
+      ws=new WebSocket(WS_URL);
+      ws.onopen=()=>setStatus('Conectado. Estableciendo canal cifrado…');
+      ws.onmessage=async (e)=>{
+        let msg;try{msg=JSON.parse(e.data)}catch{return}
+        if(msg.type==='connected'){
+          // Derive shared key from the desktop pubkey in the QR, send ours.
+          const kp=nacl.box.keyPair();
+          sharedKey=nacl.box.before(hexToBytes(DESKTOP_PK_HEX),kp.secretKey);
+          ws.send(JSON.stringify({type:'key-exchange',publicKey:bytesToHex(kp.publicKey)}));
+        } else if(msg.type==='key-exchange-ack'){
+          // Channel ready → send a fresh challenge the desktop must sign over.
+          challengeNonce=(crypto.randomUUID?crypto.randomUUID():bytesToHex(nacl.randomBytes(16)));
+          setStatus('Solicitando presentación firmada…');
+          const payload=JSON.stringify({type:'challenge',nonce:challengeNonce});
+          const nonce=nacl.randomBytes(24);
+          const ct=nacl.secretbox(new TextEncoder().encode(payload),nonce,sharedKey);
+          ws.send(JSON.stringify({type:'encrypted',nonce:bytesToHex(nonce),data:bytesToHex(ct)}));
+        } else if(msg.type==='encrypted'&&sharedKey){
+          const pt=nacl.secretbox.open(hexToBytes(msg.data),hexToBytes(msg.nonce),sharedKey);
+          if(!pt)return;
+          let inner;try{inner=JSON.parse(new TextDecoder().decode(pt))}catch{return}
+          if(inner.type==='presentation') showResult(inner.vp);
+        }
+      };
+      ws.onerror=()=>setStatus('Error de conexión. ¿Misma red WiFi?');
+      ws.onclose=()=>{};
+    }
+    connect();
+  </script>
+</body>
+</html>`
+  }
+
   /** Generate the mobile capture HTML page */
   private getMobileCaptureHTML(sessionId: string): string {
+    // Plain ws:// — the page is served over http, so this is same-security
+    // (no mixed content) and needs no cert. Frame contents are still E2E
+    // encrypted at the app layer (nacl box sealed to the QR ?pk=).
     const wsUrl = `ws://${this.getLocalIP()}:${this.port}/ws/${sessionId}`
 
     return `<!DOCTYPE html>
