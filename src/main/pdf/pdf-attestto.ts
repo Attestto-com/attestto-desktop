@@ -30,6 +30,8 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { createHash } from 'node:crypto'
 import nacl from 'tweetnacl'
 import { appendKeywordRevision, hasExistingSignature } from './incremental-info-update'
+import { verificationMethodFor } from '../../shared/verification-method'
+import { didKeyMatchesPublicKey } from '../../shared/did-key'
 
 /** What we embed in the PDF. Stable wire shape — versioned. */
 export interface AttesttoPdfSignature {
@@ -196,7 +198,7 @@ export async function signAttesttoPdf(opts: SignAttesttoOptions): Promise<SignAt
     proof: {
       type: 'Ed25519Signature2020',
       created: signedAt,
-      verificationMethod: `${opts.signerDid}#key-1`,
+      verificationMethod: verificationMethodFor(opts.signerDid),
       proofPurpose: 'assertionMethod',
       proofValue: bytesToBase64(sigBytes),
       publicKey: bytesToBase64(opts.signerPublicKey),
@@ -438,10 +440,8 @@ export async function verifyAttesttoPdf(
     signatureValid = false
   }
 
-  // Issuer binding: did:key:z<multibase> contains the public key. We
-  // multibase-decode the suffix and compare against the embedded pubkey.
-  // For now, do a simple substring check on the base58 representation.
-  // A future hardening pass can do full multibase/multicodec decoding.
+  // Issuer binding: `did:key:z…` encodes the public key, so the suffix is
+  // multibase-decoded and compared against the key the proof block embeds.
   const issuerBinding = checkIssuerBinding(sig.issuer, pubkey)
 
   return {
@@ -458,16 +458,22 @@ export async function verifyAttesttoPdf(
 }
 
 /**
- * Best-effort check that the issuer DID encodes the same public key that
- * the proof block carries. Currently a permissive check — full multibase
- * decoding is a follow-up.
+ * Whether the issuer DID encodes the same public key the proof block carries.
+ *
+ * SOC-191. This used to return `did.startsWith('did:key:z') && pubkey.length === 32`
+ * — it never compared the DID to the key at all, so `issuerBinding` was true
+ * for **every** `did:key` issuer, and the reason string "issuer DID does not
+ * match embedded public key" named an outcome that could not occur. A valid
+ * signature block re-served under any other `did:key` verified, with the
+ * document reporting that the issuer had been checked.
+ *
+ * It was written that way to avoid implementing base58 ("rather than
+ * implementing base58 here, we accept any did:key issuer for now"). That is
+ * now `shared/did-key.ts`, and the deferral no longer buys anything.
+ *
+ * The signature alone does not close this: it proves the embedded key signed
+ * the document, not that the embedded key is the issuer the document names.
  */
 function checkIssuerBinding(did: string, pubkey: Uint8Array): boolean {
-  // did:key form: did:key:z<base58btc-encoded multicodec ed25519 prefix + pubkey>
-  // The first byte after multibase 'z' is multicodec 0xed (ed25519-pub).
-  // Rather than implementing base58 here, we accept any did:key issuer
-  // for now and rely on the signature itself for cryptographic binding.
-  // TODO: implement strict did:key resolution once @attestto/vc-sdk is
-  // wired into the desktop main process.
-  return did.startsWith('did:key:z') && pubkey.length === 32
+  return didKeyMatchesPublicKey(did, pubkey)
 }

@@ -1,5 +1,6 @@
 import nacl from 'tweetnacl'
 import { stationKeys } from './station-keys'
+import { didKeyFromEd25519PublicKey } from '../../shared/did-key'
 import { signWithPairwiseKey, prepareCredential, finalizeCredential, type PairwiseProof } from './station-pairwise'
 
 /**
@@ -80,7 +81,7 @@ export class StationService {
    *
    *   sns:  did:sns:station-<id>.attestto          (Web3 anchor)
    *   web:  did:web:attestto.id:stations:<id>      (Web2 anchor)
-   *   key:  did:key:z<base64url-multicodec-pubkey> (raw)
+   *   key:  did:key:z6Mk… (raw multicodec ed25519 pubkey, base58btc)
    *
    * The sns and web forms are the canonical issuer references. They both point
    * to DID documents that publish this station's master pubkey under
@@ -94,7 +95,7 @@ export class StationService {
     return {
       sns: `did:sns:station-${id}.attestto`,
       web: `did:web:attestto.id:stations:${id}`,
-      key: this.publicKeyToDidKey(this.getPublicKey()),
+      key: didKeyFromEd25519PublicKey(this.getPublicKey()),
     }
   }
 
@@ -144,21 +145,12 @@ export class StationService {
 
   // ── private ──────────────────────────────────────────
 
-  /**
-   * Convert a raw 32-byte ed25519 pubkey to a `did:key:z…` string.
-   *
-   * Mirrors `vault-service.ts`'s convention (multicodec ed25519 prefix
-   * 0xed01, then base64url, with a leading `z`). Note: the `z` prefix is
-   * technically multibase base58btc, but the rest of the desktop app uses
-   * base64url under the same prefix; we match that here so the two services
-   * produce mutually-resolvable identifiers. Spec-compliance cleanup is a
-   * separate task.
-   */
-  private publicKeyToDidKey(publicKey: Uint8Array): string {
-    const multicodec = new Uint8Array([0xed, 0x01, ...publicKey])
-    const encoded = Buffer.from(multicodec).toString('base64url')
-    return `did:key:z${encoded}`
-  }
+  // SOC-191 was the separate task this file's comment pointed at. It said the
+  // `z` prefix was "technically multibase base58btc" while the payload was
+  // base64url, and matched the other services so the identifiers would be
+  // "mutually-resolvable" — which they were, but only to each other. Nothing
+  // outside this app could decode any of them. Two implementations agreeing is
+  // consistency, not correctness; the derivation now lives in one place.
 }
 
 export const stationService = new StationService()
