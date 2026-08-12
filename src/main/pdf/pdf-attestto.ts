@@ -30,6 +30,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { createHash } from 'node:crypto'
 import nacl from 'tweetnacl'
 import { appendKeywordRevision, hasExistingSignature } from './incremental-info-update'
+import { verificationMethodFor } from '../../shared/verification-method'
 
 /** What we embed in the PDF. Stable wire shape — versioned. */
 export interface AttesttoPdfSignature {
@@ -196,7 +197,7 @@ export async function signAttesttoPdf(opts: SignAttesttoOptions): Promise<SignAt
     proof: {
       type: 'Ed25519Signature2020',
       created: signedAt,
-      verificationMethod: `${opts.signerDid}#key-1`,
+      verificationMethod: verificationMethodFor(opts.signerDid),
       proofPurpose: 'assertionMethod',
       proofValue: bytesToBase64(sigBytes),
       publicKey: bytesToBase64(opts.signerPublicKey),

@@ -1138,6 +1138,7 @@ async function linkFirmaDigital() {
 
 // RFC 8785 JCS canonicalization — deterministic JSON for signing
 import { canonicalize } from '../../shared/jcs'
+import { verificationMethodFor } from '../../shared/verification-method'
 
 async function storeCredential(cedula: string) {
   const nombre = manualNombre.value || extractedData.value?.nombre || ''
@@ -1233,7 +1234,7 @@ async function storeCredential(cedula: string) {
       proof = {
         type: 'Ed25519Signature2020',
         created: prepared.createdAt,
-        verificationMethod: `${subDidKey}#key-1`,
+        verificationMethod: verificationMethodFor(subDidKey),
         proofPurpose: 'assertionMethod',
         proofValue: `z${finalized.proofValueB64}`,
         delegationProof: {

@@ -29,6 +29,7 @@ import type {
 } from '@attestto/vc-sdk'
 import type { VaultCredential } from '../../shared/vault-api'
 import { canonicalize } from '../../shared/jcs'
+import { verificationMethodFor } from '../../shared/verification-method'
 
 export type OID4VPStep = 'idle' | 'scanning' | 'parsing' | 'consent' | 'signing' | 'submitting' | 'done' | 'error'
 
@@ -182,7 +183,7 @@ export function useOid4vp() {
         '@context': vpBody['@context'],
         type: 'Ed25519Signature2020',
         created,
-        verificationMethod: `${holderDid}#key-1`,
+        verificationMethod: verificationMethodFor(holderDid),
         proofPurpose: 'authentication',
         nonce,
         domain: request.client_id,
@@ -202,7 +203,7 @@ export function useOid4vp() {
         proof: {
           type: 'Ed25519Signature2020',
           created,
-          verificationMethod: `${holderDid}#key-1`,
+          verificationMethod: verificationMethodFor(holderDid),
           proofPurpose: 'authentication',
           proofValue,
           nonce,

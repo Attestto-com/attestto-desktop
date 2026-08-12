@@ -16,6 +16,7 @@
 import { ref } from 'vue'
 import { canonicalize } from '../../shared/jcs'
 import type { VaultCredential } from '../../shared/vault-api'
+import { verificationMethodFor } from '../../shared/verification-method'
 
 export interface ReissuedCredential {
   '@context': string[]
@@ -96,7 +97,7 @@ export function useCredentialExport() {
         '@context': body['@context'],
         type: 'Ed25519Signature2020',
         created,
-        verificationMethod: `${issuerDid}#key-1`,
+        verificationMethod: verificationMethodFor(issuerDid),
         proofPurpose: 'assertionMethod',
         vcHash: await sha256hex(body),
       }
@@ -107,7 +108,7 @@ export function useCredentialExport() {
         proof: {
           type: 'Ed25519Signature2020',
           created,
-          verificationMethod: `${issuerDid}#key-1`,
+          verificationMethod: verificationMethodFor(issuerDid),
           proofPurpose: 'assertionMethod',
           proofValue: uint8ToBase64url(sig),
         },
