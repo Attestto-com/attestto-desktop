@@ -28,7 +28,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "type-check": "tsc --noEmit",
-    "postinstall": "electron-rebuild"
+    "postinstall": "electron-rebuild",
+    "gate-self-test": "node scripts/gate-self-test.mjs"
   },
   "dependencies": {
     "@attestto/cr-vc-sdk": "0.2.0",
@@ -116,5 +117,24 @@
       "tar": "^7.5.16",
       "@babel/core": "^7.29.6"
     }
+  },
+  "gateSelfTest": {
+    "workflow": ".github/workflows/build.yml",
+    "testScript": "test:coverage",
+    "buildScript": "build",
+    "gates": [
+      {
+        "name": "type-check",
+        "script": "type-check",
+        "seed": "src/shared/__gate-self-test__.ts",
+        "content": "export const wrong: number = 'not a number'\n"
+      },
+      {
+        "name": "test",
+        "script": "test:coverage",
+        "seed": "tests/__gate-self-test__.spec.ts",
+        "content": "import { it, expect } from 'vitest'\nit('is a deliberate failure', () => { expect(1).toBe(2) })\n"
+      }
+    ]
   }
 }
