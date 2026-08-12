@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { randomBytes, hkdfSync } from 'node:crypto'
 import nacl from 'tweetnacl'
 import type { VaultEnvelope, VaultContents, VaultIdentity, EncryptedArtifact } from '../../shared/vault-api'
+import { didKeyFromEd25519PublicKey } from '../../shared/did-key'
 
 /**
  * VaultService — encrypted local vault with passkey-style UX.
@@ -74,7 +75,7 @@ export class VaultService {
     // Generate identity keypair
     const keyPair = nacl.sign.keyPair()
     const identity: VaultIdentity = {
-      did: this.publicKeyToDid(keyPair.publicKey),
+      did: didKeyFromEd25519PublicKey(keyPair.publicKey),
       publicKeyHex: Buffer.from(keyPair.publicKey).toString('hex'),
       privateKeyHex: Buffer.from(keyPair.secretKey).toString('hex'),
       algorithm: 'ed25519',
@@ -158,7 +159,7 @@ export class VaultService {
       if (!plaintext) return false
 
       this.vaultKey = key
-      this.contents = JSON.parse(new TextDecoder().decode(plaintext))
+      this.contents = this.loadContents(plaintext)
       this.touch()
       this.startAutoLock()
       return true
@@ -317,7 +318,7 @@ export class VaultService {
       writeFileSync(this.envelopePath, JSON.stringify(envelope, null, 2))
 
       this.vaultKey = key
-      this.contents = JSON.parse(new TextDecoder().decode(plaintext))
+      this.contents = this.loadContents(plaintext)
       this.touch()
       this.startAutoLock()
       return true
@@ -359,10 +360,40 @@ export class VaultService {
     writeFileSync(this.envelopePath, JSON.stringify(envelope, null, 2))
   }
 
-  private publicKeyToDid(publicKey: Uint8Array): string {
-    const multicodec = new Uint8Array([0xed, 0x01, ...publicKey])
-    const encoded = Buffer.from(multicodec).toString('base64url')
-    return `did:key:z${encoded}`
+  /**
+   * Decrypted vault contents, with the identity DID re-derived from its key.
+   *
+   * The migration for SOC-191, and the whole of it. No re-mint, no alias, no
+   * dual-read: the DID is a pure function of a public key that never changed,
+   * so a vault written with a malformed identifier opens with the correct one
+   * and needs nothing else. The malformed form is not accepted anywhere —
+   * accepting it would keep it alive as a compatibility surface, which is how
+   * a bug becomes a format.
+   */
+  private loadContents(plaintext: Uint8Array): VaultContents {
+    const contents: VaultContents = JSON.parse(new TextDecoder().decode(plaintext))
+    if (contents?.identity?.publicKeyHex) {
+      contents.identity.did = this.identityDid(contents.identity)
+    }
+    return contents
+  }
+
+  /**
+   * The identity DID, derived from the stored public key rather than read.
+   *
+   * SOC-191: `identity.did` is persisted inside the vault beside
+   * `publicKeyHex`, and every DID written before that ticket was malformed
+   * (base64url behind a base58btc `z`). Deriving on unlock repairs those
+   * vaults with no migration step and no alias, because the identifier is a
+   * pure function of a key that never changed.
+   *
+   * It also ends the drift: a stored DID can disagree with its own key, and
+   * this one did, for every vault ever created. A derived one cannot.
+   */
+  private identityDid(identity: VaultIdentity): string {
+    return didKeyFromEd25519PublicKey(
+      Uint8Array.from(Buffer.from(identity.publicKeyHex, 'hex')),
+    )
   }
 
   private touch(): void {
