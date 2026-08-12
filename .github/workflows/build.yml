@@ -30,12 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout attestto-desktop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: attestto-desktop
 
       - name: Checkout attestto-verify (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Attestto-com/verify
           ref: ${{ github.event.inputs.verify_ref || 'main' }}
@@ -43,7 +43,7 @@ jobs:
           token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Checkout attestto-mesh (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Attestto-com/attestto-mesh
           ref: ${{ github.event.inputs.mesh_ref || 'main' }}
@@ -55,18 +55,18 @@ jobs:
       # `@attestto/trust/{cr,br,ar}` fail to resolve (TS2307) when verify builds.
       # No build step needed — the country index.js/.d.ts files are committed.
       - name: Checkout attestto-trust (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Attestto-com/attestto-trust
           ref: ${{ github.event.inputs.trust_ref || 'main' }}
           path: attestto-trust
           token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: attestto-desktop/.nvmrc
           cache: pnpm

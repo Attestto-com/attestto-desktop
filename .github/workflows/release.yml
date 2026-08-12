@@ -46,12 +46,12 @@ jobs:
 
     steps:
       - name: Checkout attestto-desktop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: attestto-desktop
 
       - name: Checkout attestto-verify (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Attestto-com/verify
           ref: ${{ github.event.inputs.verify_ref || 'main' }}
@@ -59,18 +59,18 @@ jobs:
           token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Checkout attestto-mesh (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Attestto-com/attestto-mesh
           ref: ${{ github.event.inputs.mesh_ref || 'main' }}
           path: attestto-mesh
           token: ${{ secrets.SIBLING_REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: pnpm
@@ -122,7 +122,7 @@ jobs:
 
       - name: Upload installers as workflow artifact (backup)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: attestto-${{ matrix.label }}-${{ github.ref_name }}
           path: |
