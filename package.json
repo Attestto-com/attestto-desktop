@@ -75,7 +75,7 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^6.0.5",
     "@vitest/coverage-v8": "^4.1.4",
-    "electron": "^39.8.1",
+    "electron": "^42.11.16",
     "electron-builder": "^26.0.0",
     "electron-vite": "^3.0.0",
     "sass-embedded": "^1.98.0",
